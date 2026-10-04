@@ -89,7 +89,7 @@ fit:
 
 # Rubros (el primero que matchea define business_type)
 business_types:
-  gastronomia: [restaurante, resto, restobar, bar, cafeteria, cafe, pizzeria, hamburgueseria, rotiseria, panaderia, heladeria, parrilla, sushi, pasteleria, comidas, viandas]
+  gastronomia: [restaurante, resto, restobar, bar, cafeteria, cafe, pizzeria, pizzas, hamburgueseria, hamburguesas, burger, empanadas, rotiseria, panaderia, heladeria, parrilla, sushi, pasteleria, comidas, viandas]
   estetica: [estetica, peluqueria, barberia, nails, manicura, esmaltado, spa, cosmetologia, depilacion, lashes, pestanas, cejas, maquillaje]
   salud: [consultorio, odontologia, odontologo, odontologa, dentista, kinesiologia, kinesiologo, nutricionista, psicologa, psicologo, medico, medica, clinica, veterinaria, fonoaudiologa, optica, podologia]
   deportes: [gimnasio, gym, crossfit, pilates, yoga, cancha, canchas, padel, futbol 5, club, entrenamiento, funcional]
