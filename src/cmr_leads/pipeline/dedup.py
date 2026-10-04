@@ -14,6 +14,7 @@ from cmr_leads.pipeline.normalize import is_aggregator_domain, normalize_text, p
 MERGEABLE_FIELDS = (
     "instagram_user_id",
     "instagram_username",
+    "google_place_id",
     "display_name",
     "bio",
     "category",
@@ -43,6 +44,8 @@ def lead_identifiers(lead: Lead) -> set[tuple[str, str]]:
         idents.add((IdentifierType.IG_ID, lead.instagram_user_id))
     if lead.instagram_username:
         idents.add((IdentifierType.IG_USERNAME, lead.instagram_username))
+    if lead.google_place_id:
+        idents.add((IdentifierType.PLACE_ID, lead.google_place_id))
     for number in (lead.phone_e164, lead.whatsapp_e164):
         key = phone_key(number)
         if key:

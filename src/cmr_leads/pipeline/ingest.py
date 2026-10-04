@@ -64,6 +64,7 @@ def apply_profile(lead: Lead, profile: RawProfile, country: str, overwrite: bool
     """Vuelca un perfil normalizado sobre el lead. `overwrite` para datos frescos de una API."""
     _fill(lead, "instagram_username", normalize_username(profile.instagram_username), overwrite)
     _fill(lead, "instagram_user_id", clean_str(profile.instagram_user_id), overwrite)
+    _fill(lead, "google_place_id", clean_str(profile.google_place_id), overwrite)
     _fill(lead, "display_name", clean_str(profile.display_name), overwrite)
     _fill(lead, "bio", clean_str(profile.bio), overwrite)
     _fill(lead, "category", clean_str(profile.category), overwrite)

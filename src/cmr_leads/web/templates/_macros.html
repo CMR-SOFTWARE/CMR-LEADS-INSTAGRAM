@@ -45,6 +45,7 @@
     {% set search = lead|search_links %}
     <a class="link-pill" href="{{ search.google }}" target="_blank" rel="noopener">{{ icon("google") }} Google</a>
     <a class="link-pill" href="{{ search.maps }}" target="_blank" rel="noopener">{{ icon("maps") }} Maps</a>
+    {% if not lead.instagram_username %}<a class="link-pill instagram" href="{{ search.instagram }}" target="_blank" rel="noopener" title="Buscar su Instagram en Google">{{ icon("instagram") }} Buscar Instagram</a>{% endif %}
   {% endif %}
 </div>
 {%- endmacro %}

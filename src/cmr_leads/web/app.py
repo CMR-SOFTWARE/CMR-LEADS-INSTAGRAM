@@ -75,6 +75,7 @@ SOURCE_LABELS = {
     SourceType.DISCOVERED_FROM_FOLLOWERS: "Seguidores de otro perfil",
     SourceType.MANUAL: "Carga manual",
     SourceType.CSV_IMPORT: "CSV",
+    SourceType.GOOGLE_PLACES: "Google Maps",
 }
 SERVICE_LABELS = {
     "pagina_web": "Página web",
@@ -110,11 +111,17 @@ def _avatar_hue(lead: Lead) -> int:
     return int(hashlib.md5(key, usedforsecurity=False).hexdigest()[:4], 16) % 360
 
 
+def _google_data(lead: Lead) -> dict:
+    return (lead.raw_data or {}).get("google_places") or {}
+
+
 def _search_links(lead: Lead) -> dict[str, str]:
     query = " ".join(filter(None, [lead.display_name or lead.instagram_username, lead.city]))
     return {
         "google": f"https://www.google.com/search?q={quote_plus(query)}",
-        "maps": f"https://www.google.com/maps/search/{quote_plus(query)}",
+        "maps": _google_data(lead).get("maps_url")
+        or f"https://www.google.com/maps/search/{quote_plus(query)}",
+        "instagram": f"https://www.google.com/search?q={quote_plus(query + ' instagram')}",
     }
 
 
@@ -168,6 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         hue=_avatar_hue,
         profile_links=_profile_links,
         search_links=_search_links,
+        google_data=_google_data,
         date=lambda d: d.strftime("%d/%m/%Y") if d else "",
         pct=lambda v: "—" if v is None else f"{v * 100:.0f}%",
     )
@@ -556,11 +564,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 or 0
             )
+        from cmr_leads.sources.google_places import SUGGESTED_QUERIES
+
         return render(
             request,
             "import.html",
             pending=pending,
             instagram_configured=settings.instagram_configured,
+            google_configured=settings.google_places_configured,
+            search_area=settings.search_area,
+            suggested_queries=SUGGESTED_QUERIES,
         )
 
     def _ingest_source(source, label: str) -> str:
@@ -615,6 +628,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             shutil.rmtree(path.parent, ignore_errors=True)
         return back("/importar", msg)
+
+    @app.post("/importar/google")
+    def import_google(
+        query: str = Form(""),
+        quick: str = Form(""),
+        area: str = Form(""),
+        max_results: int = Form(20),
+    ):
+        from cmr_leads.pipeline.google_search import run_google_search
+        from cmr_leads.sources.google_places import GooglePlacesClient
+
+        if not settings.google_places_configured:
+            return back("/importar", "Falta configurar GOOGLE_PLACES_API_KEY en el archivo .env")
+        query = (quick or query).strip()
+        if not query:
+            return back("/importar", "Escribí qué rubro buscar")
+        with db() as (session, ws):
+            result = run_google_search(
+                session,
+                ws,
+                GooglePlacesClient(settings.google_places_api_key),
+                query,
+                area.strip() or settings.search_area,
+                min(max(max_results, 1), 60),
+                settings.google_places_max_requests_per_day,
+                settings.default_country,
+                scoring_config(),
+            )
+        return back("/leads?source=google_places", result.summary(query))
 
     @app.post("/acciones/enriquecer")
     def action_enrich(limit: int = Form(20)):

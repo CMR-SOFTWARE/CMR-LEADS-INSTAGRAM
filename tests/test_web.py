@@ -166,3 +166,34 @@ def test_open_redirect_is_ignored(client):
         follow_redirects=False,
     )
     assert response.headers["location"].startswith(f"/leads/{lead_id}")
+
+
+def test_google_search_from_panel(client, monkeypatch):
+    import cmr_leads.sources.google_places as gp
+
+    class FakeClient:
+        def __init__(self, api_key):
+            assert api_key == "k"
+
+        def search_text(self, query, page_token=None):
+            assert query == "gimnasio en San Nicolás de los Arroyos, Buenos Aires"
+            return [
+                {
+                    "id": "g1",
+                    "displayName": {"text": "Gym Uno"},
+                    "nationalPhoneNumber": "0336 442-1234",
+                    "businessStatus": "OPERATIONAL",
+                }
+            ], None
+
+    assert "Falta la API key" in client.get("/importar").text
+    response = client.post("/importar/google", data={"quick": "gimnasio"})
+    assert "Falta configurar" in _msg(response)
+
+    monkeypatch.setattr(gp, "GooglePlacesClient", FakeClient)
+    client.app.state.settings.google_places_api_key = "k"
+    response = client.post("/importar/google", data={"quick": "gimnasio", "max_results": "20"})
+    assert "1 nuevos" in _msg(response)
+    lead = _lead(client, google_place_id="g1")
+    assert lead.display_name == "Gym Uno"
+    assert "Google Maps" in client.get("/leads?source=google_places").text

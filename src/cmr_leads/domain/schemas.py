@@ -25,6 +25,7 @@ class RawProfile(BaseModel):
     following: int | None = None
     posts_count: int | None = None
     is_business_account: bool | None = None
+    google_place_id: str | None = None
     notes: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 

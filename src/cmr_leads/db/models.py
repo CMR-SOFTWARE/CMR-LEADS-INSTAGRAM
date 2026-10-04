@@ -33,6 +33,7 @@ class Lead(Base):
 
     instagram_user_id: Mapped[str | None] = mapped_column(String(64))
     instagram_username: Mapped[str | None] = mapped_column(String(64), index=True)
+    google_place_id: Mapped[str | None] = mapped_column(String(200))
     display_name: Mapped[str | None] = mapped_column(String(200))
     bio: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(120))

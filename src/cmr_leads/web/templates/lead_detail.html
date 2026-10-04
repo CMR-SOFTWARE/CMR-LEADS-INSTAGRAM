@@ -13,6 +13,8 @@
         {{ status_chip(lead) }}
         {% if lead.business_type %}<span class="chip">{{ lead.business_type }}</span>{% endif %}
         {% if lead.city %}<span class="chip">📍 {{ lead.city }}</span>{% endif %}
+        {% set g = lead|google_data %}
+        {% if g.rating %}<span class="chip">⭐ {{ g.rating }} ({{ g.reviews or 0 }} reseñas)</span>{% endif %}
         {% if lead.followers %}<span class="chip">{{ "{:,}".format(lead.followers).replace(",", ".") }} seguidores</span>{% endif %}
         {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">Ofrecer: {{ SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
         {% if lead.enrichment_state == "pending" %}<span class="chip amber">Sin datos de Instagram aún</span>{% endif %}

@@ -22,9 +22,17 @@ class Settings(BaseSettings):
     website_fetch_enabled: bool = True
     website_timeout_seconds: float = 10.0
 
+    google_places_api_key: str | None = None
+    google_places_max_requests_per_day: int = 100
+    search_area: str = "San Nicolás de los Arroyos, Buenos Aires"
+
     sender_name: str = "Tomás"
     company_name: str = "CMR Software Solutions"
     company_city: str = "San Nicolás"
+
+    @property
+    def google_places_configured(self) -> bool:
+        return bool(self.google_places_api_key)
 
     @property
     def instagram_configured(self) -> bool:

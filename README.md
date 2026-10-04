@@ -17,6 +17,7 @@ Fuentes ─► Normalización ─► Dedup ─► Enriquecimiento ─► Dedup/m
 |---|---|---|
 | Seguidos de CMR | `cmr_following` | Export oficial de Instagram |
 | Seguidores de CMR | `cmr_followers` | Export oficial de Instagram |
+| Google Maps | `google_places` | Búsqueda por rubro y zona (API oficial) |
 | Carga manual | `manual` | `cmr-leads add` (con `--source-ref` = perfil que lo originó) |
 | CSV | `csv_import` | `cmr-leads import csv` |
 | Descubiertos desde otros perfiles | `discovered_from_*` | Reservado; ver *Limitaciones* |
@@ -25,6 +26,27 @@ Fuentes ─► Normalización ─► Dedup ─► Enriquecimiento ─► Dedup/m
 listar seguidores ni seguidos (solo da los totales). El export de *Centro de cuentas → Tu información
 y permisos → Descargar tu información → Seguidores y seguidos (formato JSON)* sí los trae, es oficial
 y no pone en riesgo la cuenta.
+
+## Google Places: buscar negocios por rubro
+
+Es la fuente principal para encontrar negocios locales. Usa la **Places API (New)** de Google, que
+es oficial: buscás un rubro ("peluquería") en una zona y carga nombre, categoría, teléfono, web,
+dirección, rating y link a Maps. Si el negocio puso su Instagram como sitio web, también lo toma.
+
+1. Entrá a [console.cloud.google.com](https://console.cloud.google.com/), creá un proyecto y
+   activá la facturación (Google la pide aunque no superes el cupo gratis).
+2. Habilitá **Places API (New)** y creá una **API key**. Restringila a esa API.
+3. Ponela en `.env` como `GOOGLE_PLACES_API_KEY` y reiniciá el programa.
+4. En el panel: **Importar → Buscar negocios en Google Maps**. Por consola:
+   `cmr-leads import google "peluquería" --max 60`.
+
+Cada página de resultados (hasta 20 negocios) es una request. Google da un cupo gratis mensual
+(del orden de 1.000 requests para este tipo de búsqueda; revisá la página de precios vigente).
+El programa tiene un tope diario (`GOOGLE_PLACES_MAX_REQUESTS_PER_DAY`, por defecto 100). Te
+recomiendo además poner una alerta de presupuesto en Google Cloud.
+
+Los términos de Google Maps limitan qué datos se pueden guardar a largo plazo: el `place_id`
+siempre se puede guardar, y el resto conviene refrescarlo periódicamente.
 
 ## Enriquecimiento
 

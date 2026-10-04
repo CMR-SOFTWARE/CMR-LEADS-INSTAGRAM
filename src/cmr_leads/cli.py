@@ -124,6 +124,34 @@ def import_csv(path: Annotated[Path, typer.Argument(exists=True, dir_okay=False)
     _ingest_all(CsvSource(path), "CSV")
 
 
+@import_app.command("google")
+def import_google(
+    query: Annotated[str, typer.Argument(help='Rubro a buscar, ej. "peluquería"')],
+    area: Annotated[str | None, typer.Option(help="Zona (por defecto SEARCH_AREA)")] = None,
+    max_results: Annotated[int, typer.Option("--max", help="Hasta 60 por búsqueda")] = 20,
+) -> None:
+    """Busca negocios en Google Places (API oficial) y los carga como leads."""
+    from cmr_leads.pipeline.google_search import run_google_search
+    from cmr_leads.sources.google_places import GooglePlacesClient
+
+    settings = get_settings()
+    if not settings.google_places_configured:
+        _fail("Falta GOOGLE_PLACES_API_KEY en .env (ver README).")
+    with workspace_session() as (session, workspace):
+        result = run_google_search(
+            session,
+            workspace,
+            GooglePlacesClient(settings.google_places_api_key),
+            query,
+            area or settings.search_area,
+            max_results,
+            settings.google_places_max_requests_per_day,
+            settings.default_country,
+            load_scoring_config(settings.scoring_config),
+        )
+    console.print(f"[green]Google Places[/green] {result.summary(query)}")
+
+
 @app.command()
 def add(
     username: Annotated[str | None, typer.Argument(help="@usuario de Instagram")] = None,

@@ -19,6 +19,7 @@ class SourceType(StrEnum):
     DISCOVERED_FROM_FOLLOWERS = "discovered_from_followers"
     MANUAL = "manual"
     CSV_IMPORT = "csv_import"
+    GOOGLE_PLACES = "google_places"
 
 
 class IdentifierType(StrEnum):
@@ -27,6 +28,7 @@ class IdentifierType(StrEnum):
     PHONE = "phone"
     DOMAIN = "domain"
     EMAIL = "email"
+    PLACE_ID = "place_id"
 
 
 class EnrichmentState(StrEnum):
