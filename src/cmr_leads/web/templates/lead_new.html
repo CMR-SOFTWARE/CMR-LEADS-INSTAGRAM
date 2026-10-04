@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/leads" class="small">← Volver a leads</a></p>
+<div class="page-head"><div><h1>Agregar lead</h1><p>Si ya existe (mismo Instagram, teléfono o web), se completan sus datos.</p></div></div>
+<form class="card" method="post" action="/leads/nuevo" style="max-width:760px">
+  <div class="form-grid">
+    <div class="field"><label>Instagram</label><input type="text" name="instagram" placeholder="@negocio o link al perfil"></div>
+    <div class="field"><label>Nombre del negocio</label><input type="text" name="name"></div>
+    <div class="field"><label>WhatsApp</label><input type="text" name="whatsapp" placeholder="336 412-3456"></div>
+    <div class="field"><label>Teléfono</label><input type="text" name="phone"></div>
+    <div class="field"><label>Email</label><input type="email" name="email"></div>
+    <div class="field"><label>Sitio web</label><input type="text" name="website"></div>
+    <div class="field"><label>Ciudad</label><input type="text" name="city" placeholder="San Nicolás"></div>
+    <div class="field"><label>¿De dónde salió?</label><input type="text" name="source_ref" placeholder="Ej.: seguidor de @otro.negocio, referido…"></div>
+  </div>
+  <div class="field"><label>Descripción / bio</label><textarea name="bio" style="min-height:80px" placeholder="Qué hace el negocio (ayuda al puntaje)"></textarea></div>
+  <div class="field"><label>Notas</label><textarea name="notes" style="min-height:60px"></textarea></div>
+  <button class="btn btn-primary">Guardar lead</button>
+</form>
+{% endblock %}

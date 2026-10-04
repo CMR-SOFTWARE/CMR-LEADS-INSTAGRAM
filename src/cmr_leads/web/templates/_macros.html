@@ -1,0 +1,50 @@
+{% macro icon(kind) -%}
+{%- if kind == "instagram" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>
+{%- elif kind == "whatsapp" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.4-.3z"/></svg>
+{%- elif kind == "web" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+{%- elif kind == "phone" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+{%- elif kind == "email" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+{%- elif kind == "google" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+{%- elif kind == "maps" -%}
+<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro avatar(lead, size="") -%}
+<div class="avatar {{ size }}" style="background: linear-gradient(135deg, hsl({{ lead|hue }} 70% 55%), hsl({{ (lead|hue) + 40 }} 70% 45%))">{{ lead|initials }}</div>
+{%- endmacro %}
+
+{% macro score(lead, size="") -%}
+{%- set value = lead.business_score or 0 -%}
+{%- set cls = "excl" if lead.excluded else ("high" if lead.priority == "interesante" else ("mid" if lead.priority == "posible" else "low")) -%}
+<div class="score {{ cls }} {{ size }}" style="--score: {{ 100 if lead.excluded else value }}" title="{{ lead.exclusion_reason or ('Prioridad: ' ~ (lead.priority or '-')) }}">
+  <span>{{ "✕" if lead.excluded else value }}</span>
+</div>
+{%- endmacro %}
+
+{% macro status_chip(lead) -%}
+{%- set colors = {"new": "", "approved": "accent", "contacted": "amber", "replied": "green", "meeting": "green", "won": "green", "rejected": "red", "lost": "red"} -%}
+<span class="chip {{ colors.get(lead.status, '') }}">{{ STATUS_LABELS.get(lead.status, lead.status) }}</span>
+{%- if lead.do_not_contact %} <span class="chip red">No contactar</span>{% endif -%}
+{%- endmacro %}
+
+{% macro links(lead, compact=false) -%}
+<div class="links">
+  {% for link in lead|profile_links %}
+    {% if not compact or link.kind in ("instagram", "whatsapp", "web") %}
+    <a class="link-pill {{ link.kind }}" href="{{ link.url }}" target="_blank" rel="noopener" title="{{ link.url }}">{{ icon(link.kind) }}{% if not compact %} {{ link.label }}{% endif %}</a>
+    {% endif %}
+  {% endfor %}
+  {% if not compact %}
+    {% set search = lead|search_links %}
+    <a class="link-pill" href="{{ search.google }}" target="_blank" rel="noopener">{{ icon("google") }} Google</a>
+    <a class="link-pill" href="{{ search.maps }}" target="_blank" rel="noopener">{{ icon("maps") }} Maps</a>
+  {% endif %}
+</div>
+{%- endmacro %}

@@ -1,0 +1,35 @@
+{% from "_macros.html" import icon %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CMR Lead Finder{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">CMR</div>
+      <div>Lead Finder<small>{{ company }}</small></div>
+    </div>
+    <nav class="nav">
+      <a href="/" class="{{ 'active' if active == 'dashboard' }}"><span class="icon">🏠</span><span class="label">Inicio</span></a>
+      <a href="/leads" class="{{ 'active' if active in ('leads', 'lead_detail', 'lead_new') }}"><span class="icon">👥</span><span class="label">Leads</span></a>
+      <a href="/revisar" class="{{ 'active' if active == 'review' }}"><span class="icon">⚡</span><span class="label">Revisar</span></a>
+      <a href="/algoritmo" class="{{ 'active' if active == 'algorithm' }}"><span class="icon">🧠</span><span class="label">Algoritmo</span></a>
+      <a href="/importar" class="{{ 'active' if active == 'import' }}"><span class="icon">📥</span><span class="label">Importar</span></a>
+    </nav>
+    <div class="sidebar-footer">Los mensajes siempre los envía una persona.</div>
+  </aside>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% if msg %}<div class="toast">{{ msg }}</div>{% endif %}
+<script src="{{ url_for('static', path='app.js') }}"></script>
+</body>
+</html>

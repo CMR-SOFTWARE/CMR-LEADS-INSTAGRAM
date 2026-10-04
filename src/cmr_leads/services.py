@@ -119,3 +119,29 @@ def source_stats(session: Session, workspace_id: int) -> list[SourceStats]:
         )
         for source, c in sorted(buckets.items())
     ]
+
+
+def set_feedback(
+    session: Session, lead: Lead, value: int | None, reason: str | None = None
+) -> None:
+    """Feedback para entrenar el scoring: 1 = buen lead, -1 = mal lead, None = borrar."""
+    lead.feedback = value
+    lead.feedback_reason = reason if value is not None else None
+    lead.feedback_at = utcnow() if value is not None else None
+    session.flush()
+
+
+def follow_ups_due(session: Session, workspace_id: int) -> list[Lead]:
+    return list(
+        session.scalars(
+            select(Lead)
+            .where(
+                Lead.workspace_id == workspace_id,
+                Lead.next_follow_up_at.is_not(None),
+                Lead.next_follow_up_at <= utcnow(),
+                Lead.status == LeadStatus.CONTACTED,
+                Lead.do_not_contact.is_(False),
+            )
+            .order_by(Lead.next_follow_up_at)
+        )
+    )

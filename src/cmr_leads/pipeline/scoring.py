@@ -74,10 +74,46 @@ class ScoringConfig(BaseModel):
     reach: ReachRules = Field(default_factory=ReachRules)
 
 
+def local_overrides_path(path: Path) -> Path:
+    """Ajustes hechos desde el panel (pesos aprendidos, exclusiones). No se versiona."""
+    return path.with_name(f"{path.stem}.local{path.suffix}")
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def read_overrides(path: Path) -> dict:
+    local = local_overrides_path(path)
+    if not local.exists():
+        return {}
+    with open(local, encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
+
+
+def save_overrides(path: Path, overrides: dict) -> None:
+    with open(local_overrides_path(path), "w", encoding="utf-8") as fh:
+        fh.write("# Generado por el panel de CMR Lead Finder. Se aplica sobre scoring.yaml.\n")
+        yaml.safe_dump(overrides, fh, allow_unicode=True, sort_keys=True)
+    load_scoring_config.cache_clear()
+
+
 @lru_cache
 def load_scoring_config(path: Path) -> ScoringConfig:
     with open(path, encoding="utf-8") as fh:
-        return ScoringConfig.model_validate(yaml.safe_load(fh) or {})
+        data = yaml.safe_load(fh) or {}
+    return ScoringConfig.model_validate(_deep_merge(data, read_overrides(path)))
+
+
+def get_weight(config: ScoringConfig, rule: str) -> int:
+    section, name = rule.split(".", 1)
+    return int(getattr(getattr(config, section), name))
 
 
 @dataclass
@@ -132,9 +168,13 @@ class ScoreResult:
     recommended_service: str | None = None
     breakdown: list[dict[str, Any]] = field(default_factory=list)
 
-    def add(self, dimension: str, points: int, reason: str) -> None:
+    def add(self, rule: str, points: int, reason: str) -> None:
+        """`rule` es la ruta del peso en la config (ej. 'need.no_website')."""
         if points:
-            self.breakdown.append({"dimension": dimension, "points": points, "reason": reason})
+            dimension = rule.split(".", 1)[0]
+            self.breakdown.append(
+                {"dimension": dimension, "rule": rule, "points": points, "reason": reason}
+            )
 
 
 def _contains_any(text: str, keywords: list[str]) -> str | None:
@@ -181,13 +221,21 @@ def score(data: ScoringInput, config: ScoringConfig) -> ScoreResult:
     result.business_type = business_type
     fit_rules = config.fit
     if data.is_business_account:
-        result.add("fit", fit_rules.business_account, "cuenta profesional de Instagram")
+        result.add(
+            "fit.business_account", fit_rules.business_account, "cuenta profesional de Instagram"
+        )
     if data.category:
-        result.add("fit", fit_rules.category, f"categoría: {data.category}")
+        result.add("fit.category", fit_rules.category, f"categoría: {data.category}")
     if kw := _contains_any(text, fit_rules.business_keywords):
-        result.add("fit", fit_rules.business_keywords_points, f"señal comercial ('{kw}')")
+        result.add(
+            "fit.business_keywords_points",
+            fit_rules.business_keywords_points,
+            f"señal comercial ('{kw}')",
+        )
     if business_type:
-        result.add("fit", fit_rules.business_type_points, f"rubro: {business_type}")
+        result.add(
+            "fit.business_type_points", fit_rules.business_type_points, f"rubro: {business_type}"
+        )
     local_reason = None
     if data.city and _contains_any(normalize_text(data.city), config.local.city_keywords):
         local_reason = f"ciudad: {data.city}"
@@ -202,42 +250,58 @@ def score(data: ScoringInput, config: ScoringConfig) -> ScoreResult:
                 break
     if local_reason:
         result.is_local = True
-        result.add("fit", fit_rules.local_points, f"local ({local_reason})")
+        result.add("fit.local_points", fit_rules.local_points, f"local ({local_reason})")
 
     # --- NEED ---
     need = config.need
     signals = data.website_signals or {}
     if data.link_in_bio_only:
-        result.add("need", need.link_in_bio_only, "solo link en bio/redes, sin sitio propio")
+        result.add(
+            "need.link_in_bio_only",
+            need.link_in_bio_only,
+            "solo link en bio/redes, sin sitio propio",
+        )
     elif not data.has_website:
-        result.add("need", need.no_website, "sin sitio web")
+        result.add("need.no_website", need.no_website, "sin sitio web")
     elif signals:
         if signals.get("reachable") is False:
-            result.add("need", need.website_unreachable, "el sitio web no responde")
+            result.add(
+                "need.website_unreachable", need.website_unreachable, "el sitio web no responde"
+            )
         else:
             if signals.get("https") is False:
-                result.add("need", need.website_no_https, "sitio sin HTTPS")
+                result.add("need.website_no_https", need.website_no_https, "sitio sin HTTPS")
             if signals.get("mobile_viewport") is False:
-                result.add("need", need.website_not_mobile, "sitio no adaptado a celular")
+                result.add(
+                    "need.website_not_mobile",
+                    need.website_not_mobile,
+                    "sitio no adaptado a celular",
+                )
     sells_by_dm = _contains_any(text, need.sells_by_dm_keywords)
     if sells_by_dm:
         result.add(
-            "need", need.sells_by_dm_points, f"vende/recibe pedidos por mensaje ('{sells_by_dm}')"
+            "need.sells_by_dm_points",
+            need.sells_by_dm_points,
+            f"vende/recibe pedidos por mensaje ('{sells_by_dm}')",
         )
     appointments = _contains_any(text, need.appointments_keywords)
     if appointments:
-        result.add("need", need.appointments_points, f"maneja turnos/reservas ('{appointments}')")
+        result.add(
+            "need.appointments_points",
+            need.appointments_points,
+            f"maneja turnos/reservas ('{appointments}')",
+        )
 
     # --- REACH ---
     reach = config.reach
     if data.whatsapp_e164 and data.whatsapp_confirmed:
-        result.add("reach", reach.whatsapp_confirmed, "WhatsApp publicado")
+        result.add("reach.whatsapp_confirmed", reach.whatsapp_confirmed, "WhatsApp publicado")
     elif data.phone_e164 or data.whatsapp_e164:
-        result.add("reach", reach.phone, "teléfono publicado")
+        result.add("reach.phone", reach.phone, "teléfono publicado")
     if data.email:
-        result.add("reach", reach.email, "email publicado")
+        result.add("reach.email", reach.email, "email publicado")
     if not (data.whatsapp_e164 or data.phone_e164 or data.email) and data.username:
-        result.add("reach", reach.instagram_only, "solo contacto por Instagram")
+        result.add("reach.instagram_only", reach.instagram_only, "solo contacto por Instagram")
 
     # --- Totales ---
     maxes = config.dimension_max

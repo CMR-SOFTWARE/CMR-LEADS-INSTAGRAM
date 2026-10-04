@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Importar</h1><p>Sumá leads y completá sus datos.</p></div></div>
+
+<div class="grid grid-2">
+  <form class="card" method="post" action="/importar/instagram" enctype="multipart/form-data">
+    <div class="card-head"><h2>📸 Seguidores y seguidos de Instagram</h2></div>
+    <p class="muted small" style="margin-top:0">Instagram → Centro de cuentas → Tu información → <strong>Descargar tu información</strong> → "Seguidores y seguidos" en formato <strong>JSON</strong>. Subí el .zip que te mandan.</p>
+    <div class="field"><label>Cuenta exportada</label><input type="text" name="account" placeholder="@cmr.software"></div>
+    <div class="dropzone"><input type="file" name="file" accept=".zip,.json" required></div>
+    <button class="btn btn-primary" style="margin-top:14px">Importar</button>
+  </form>
+
+  <form class="card" method="post" action="/importar/csv" enctype="multipart/form-data">
+    <div class="card-head"><h2>📄 Planilla CSV</h2></div>
+    <p class="muted small" style="margin-top:0">Columnas: <code>instagram, nombre, telefono, whatsapp, email, web, ciudad, bio, notas</code> (separadas por coma o punto y coma).</p>
+    <div class="dropzone"><input type="file" name="file" accept=".csv" required></div>
+    <button class="btn btn-primary" style="margin-top:14px">Importar</button>
+  </form>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <form class="card" method="post" action="/acciones/enriquecer">
+    <div class="card-head"><h2>🔎 Completar datos</h2><span class="chip {{ 'amber' if pending else 'green' }}">{{ pending }} pendientes</span></div>
+    <p class="muted small" style="margin-top:0">Consulta Instagram (API oficial) y la web pública de cada lead para sacar bio, WhatsApp, etc.</p>
+    {% if not instagram_configured %}<div class="notice">Falta configurar la API de Instagram en <code>.env</code>; por ahora solo se analizan sitios web.</div>{% endif %}
+    <div class="actions"><input type="number" name="limit" value="20" min="1" max="100" style="width:90px"><button class="btn btn-primary">Completar</button></div>
+  </form>
+  <div class="card">
+    <div class="card-head"><h2>⚙️ Otras acciones</h2></div>
+    <div class="actions">
+      <form method="post" action="/acciones/puntuar" class="inline"><button class="btn">↻ Re-puntuar todo</button></form>
+      <a class="btn" href="/exportar?format=xlsx">⬇ Exportar Excel</a>
+      <a class="btn" href="/exportar?format=csv">⬇ Exportar CSV</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

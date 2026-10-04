@@ -16,6 +16,9 @@ dependencies = [
     "jinja2>=3.1",
     "httpx>=0.27",
     "openpyxl>=3.1",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +33,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cmr_leads"]
+artifacts = ["src/cmr_leads/web/templates/*", "src/cmr_leads/web/static/*", "src/cmr_leads/messaging/templates/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -44,3 +48,6 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP", "SIM"]
 # El formatter maneja el largo del código; quedan textos largos para la CLI y mensajes.
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Form", "fastapi.File"]

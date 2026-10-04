@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar, score, links, status_chip %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Leads</h1><p>{{ total }} resultado{{ "" if total == 1 else "s" }}</p></div>
+  <div class="actions">
+    <a class="btn" href="/exportar?format=xlsx">⬇ Excel</a>
+    <a class="btn btn-primary" href="/leads/nuevo">＋ Agregar lead</a>
+  </div>
+</div>
+
+<div class="tabs">
+  <a href="/leads" class="{{ 'active' if not filters.view and not filters.priority and not filters.status }}">Todos</a>
+  <a href="/leads?priority=interesante" class="{{ 'active' if filters.priority == 'interesante' }}">🔥 Interesantes</a>
+  <a href="/leads?status=approved" class="{{ 'active' if filters.status == 'approved' }}">Aprobados</a>
+  <a href="/leads?status=contacted" class="{{ 'active' if filters.status == 'contacted' }}">Contactados</a>
+  <a href="/leads?view=excluidos" class="{{ 'active' if filters.view == 'excluidos' }}">Excluidos</a>
+</div>
+
+<form class="filters" method="get" action="/leads">
+  <input type="search" name="q" value="{{ filters.q }}" placeholder="Buscar por nombre, @usuario, bio o ciudad…">
+  <select name="priority">
+    <option value="">Prioridad</option>
+    {% for p in ["interesante", "posible", "baja"] %}<option value="{{ p }}" {{ 'selected' if filters.priority == p }}>{{ p|capitalize }}</option>{% endfor %}
+  </select>
+  <select name="status">
+    <option value="">Estado</option>
+    {% for key, label in STATUS_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if filters.status == key }}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="source">
+    <option value="">Fuente</option>
+    {% for key, label in SOURCE_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if filters.source == key }}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="service">
+    <option value="">Servicio</option>
+    {% for key, label in SERVICE_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if filters.service == key }}>{{ label }}</option>{% endfor %}
+  </select>
+  <input type="hidden" name="view" value="{{ filters.view }}">
+  <button class="btn" type="submit">Filtrar</button>
+</form>
+
+{% if leads %}
+<div class="lead-list">
+  {% for lead in leads %}
+  <div class="lead-row {{ 'dim' if lead.excluded or lead.do_not_contact }}">
+    {{ avatar(lead) }}
+    <div style="min-width:0">
+      <a class="lead-name" href="/leads/{{ lead.id }}">{{ lead.label }}</a>
+      <div class="lead-sub">
+        {% if lead.instagram_username %}@{{ lead.instagram_username }} · {% endif %}{{ lead.city or "Sin ciudad" }}{% if lead.business_type %} · {{ lead.business_type }}{% endif %}
+      </div>
+    </div>
+    <div class="hide-md">{{ links(lead, compact=true) }}</div>
+    {{ score(lead, "sm") }}
+    <div class="hide-md chips">
+      {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">{{ SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
+      {{ status_chip(lead) }}
+      {% if lead.excluded %}<span class="chip red" title="{{ lead.exclusion_reason }}">Excluido</span>{% endif %}
+    </div>
+    <div class="row-actions">
+      {% if lead.status == "new" and not lead.excluded %}
+      <form method="post" action="/leads/{{ lead.id }}/estado" class="inline">
+        <input type="hidden" name="status" value="approved"><input type="hidden" name="next" value="/leads?{{ query_string }}">
+        <button class="icon-btn ok" title="Aprobar">✓</button>
+      </form>
+      <form method="post" action="/leads/{{ lead.id }}/estado" class="inline">
+        <input type="hidden" name="status" value="rejected"><input type="hidden" name="next" value="/leads?{{ query_string }}">
+        <button class="icon-btn no" title="Descartar">✕</button>
+      </form>
+      {% endif %}
+      <a class="icon-btn" href="/leads/{{ lead.id }}" title="Ver detalle">→</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}<a class="btn btn-sm" href="/leads?{{ query_string }}&page={{ page - 1 }}">← Anterior</a>{% endif %}
+  <span class="muted small">Página {{ page }} de {{ pages }}</span>
+  {% if page < pages %}<a class="btn btn-sm" href="/leads?{{ query_string }}&page={{ page + 1 }}">Siguiente →</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="card empty"><div class="big">🔍</div><h2>No hay leads con estos filtros</h2><p class="muted"><a href="/leads">Limpiar filtros</a> o <a href="/importar">importar leads</a>.</p></div>
+{% endif %}
+{% endblock %}

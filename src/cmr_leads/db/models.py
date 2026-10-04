@@ -71,6 +71,11 @@ class Lead(Base):
     ai_score: Mapped[int | None] = mapped_column(Integer)
     ai_summary: Mapped[str | None] = mapped_column(Text)
 
+    # Feedback humano para calibrar el scoring: 1 = buen lead, -1 = mal lead.
+    feedback: Mapped[int | None] = mapped_column(Integer)
+    feedback_reason: Mapped[str | None] = mapped_column(String(60))
+    feedback_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     enrichment_state: Mapped[str] = mapped_column(String(20), default=EnrichmentState.PENDING)
     status: Mapped[str] = mapped_column(String(20), default=LeadStatus.NEW, index=True)
     do_not_contact: Mapped[bool] = mapped_column(Boolean, default=False)

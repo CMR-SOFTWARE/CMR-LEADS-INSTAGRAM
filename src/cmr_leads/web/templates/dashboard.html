@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar, score, links %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Hola 👋</h1>
+    <p>Así viene la prospección de {{ company }}.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/leads/nuevo">＋ Agregar lead</a>
+    <a class="btn btn-primary" href="/revisar">⚡ Revisar leads</a>
+  </div>
+</div>
+
+{% if not instagram_configured %}
+<div class="notice">La API de Instagram no está configurada: los perfiles importados quedan pendientes y su score es más bajo. Ver README → "Configurar la API de Instagram".</div>
+{% endif %}
+
+<div class="kpis">
+  <div class="kpi accent"><div class="value">{{ stats.interesantes }}</div><div class="label">Leads interesantes</div></div>
+  <div class="kpi"><div class="value">{{ stats.por_revisar }}</div><div class="label">Por revisar</div></div>
+  <div class="kpi"><div class="value">{{ stats.aprobados }}</div><div class="label">Aprobados</div></div>
+  <div class="kpi"><div class="value">{{ stats.contactados }}</div><div class="label">Contactados</div></div>
+  <div class="kpi"><div class="value">{{ stats.total }}</div><div class="label">Total en la base</div></div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h2>🔥 Mejores leads para revisar</h2><a href="/leads?status=new" class="small">Ver todos</a></div>
+    {% if top %}
+    <div class="lead-list">
+      {% for lead in top %}
+      <a href="/leads/{{ lead.id }}" style="display:flex;gap:12px;align-items:center;color:inherit;text-decoration:none">
+        {{ avatar(lead) }}
+        <div style="flex:1;min-width:0">
+          <span class="lead-name">{{ lead.label }}</span>
+          <span class="lead-sub">{{ SERVICE_LABELS.get(lead.recommended_service, "") }}{% if lead.city %} · {{ lead.city }}{% endif %}</span>
+        </div>
+        {{ score(lead, "sm") }}
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No hay leads nuevos. <a href="/importar">Importá</a> o <a href="/leads/nuevo">cargá uno</a>.</p>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>⏰ Seguimientos pendientes</h2></div>
+      {% if follow_ups %}
+      <ul class="timeline">
+        {% for lead in follow_ups %}
+        <li><a href="/leads/{{ lead.id }}">{{ lead.label }}</a><span class="muted">contactado el {{ lead.contacted_at|date }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Nada pendiente por hoy.</p>{% endif %}
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>📊 Por fuente</h2></div>
+      {% if sources %}
+      <table>
+        <tr><th>Fuente</th><th>Leads</th><th>Interes.</th><th>Contact.</th><th>Resp.</th></tr>
+        {% for s in sources %}
+        <tr><td>{{ SOURCE_LABELS.get(s.source, s.source) }}</td><td>{{ s.total }}</td><td>{{ s.interesting }}</td><td>{{ s.contacted }}</td><td>{{ s.replied }}</td></tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="muted">Todavía no hay datos.</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

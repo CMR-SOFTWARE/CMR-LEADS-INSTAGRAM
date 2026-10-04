@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar, score, links, status_chip, icon %}
+{% block title %}{{ lead.label }} · CMR Lead Finder{% endblock %}
+{% block content %}
+<p><a href="/leads" class="small">← Volver a leads</a></p>
+
+<div class="card">
+  <div class="profile-head">
+    {{ avatar(lead, "lg") }}
+    <div class="meta">
+      <h1>{{ lead.label }}</h1>
+      <div class="chips" style="margin-top:6px">
+        {{ status_chip(lead) }}
+        {% if lead.business_type %}<span class="chip">{{ lead.business_type }}</span>{% endif %}
+        {% if lead.city %}<span class="chip">📍 {{ lead.city }}</span>{% endif %}
+        {% if lead.followers %}<span class="chip">{{ "{:,}".format(lead.followers).replace(",", ".") }} seguidores</span>{% endif %}
+        {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">Ofrecer: {{ SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
+        {% if lead.enrichment_state == "pending" %}<span class="chip amber">Sin datos de Instagram aún</span>{% endif %}
+      </div>
+    </div>
+    {{ score(lead) }}
+  </div>
+  {% if lead.excluded %}<div class="notice" style="margin:16px 0 0">Excluido: {{ lead.exclusion_reason }}</div>{% endif %}
+  <div style="margin-top:16px">{{ links(lead) }}</div>
+  {% if lead.bio %}<p class="bio">{{ lead.bio }}</p>{% endif %}
+</div>
+
+<div class="detail-grid" style="margin-top:16px">
+  <div>
+    <div class="card message-box" data-message>
+      <div class="card-head"><h2>✉️ Mensaje</h2>{% if draft %}<span class="muted small">Editalo antes de enviar</span>{% endif %}</div>
+      {% if lead.do_not_contact %}
+        <p class="muted">Este lead pidió no ser contactado.</p>
+      {% elif draft %}
+        <textarea>{{ draft.text }}</textarea>
+        <div class="actions" style="margin-top:12px">
+          {% if lead.whatsapp_e164 %}
+          <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
+          {% endif %}
+          {% if lead.instagram_username %}
+          <a class="btn btn-instagram" data-dm href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ icon("instagram") }} Copiar y abrir DM</a>
+          {% endif %}
+          <button class="btn" type="button" data-copy>📋 Copiar</button>
+        </div>
+        <form method="post" action="/leads/{{ lead.id }}/contactado" class="actions" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+          <input type="hidden" name="message" data-sent-message>
+          <span class="muted small">¿Ya lo enviaste?</span>
+          <select name="channel" style="width:auto">
+            {% for key, label in CHANNEL_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if key == draft.channel }}>{{ label }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-green">✓ Marcar como contactado</button>
+        </form>
+      {% else %}
+        <p class="muted">Aprobá el lead para generar un mensaje personalizado.</p>
+        <form method="post" action="/leads/{{ lead.id }}/estado" class="actions">
+          <input type="hidden" name="status" value="approved">
+          <button class="btn btn-primary">✓ Aprobar y generar mensaje</button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>🧮 Por qué tiene este puntaje</h2></div>
+      {% for dim, label in [("fit", "Encaje"), ("need", "Necesidad"), ("reach", "Contacto")] %}
+        {% set value = lead[dim ~ "_score"] or 0 %}
+        <div class="dim-row"><span class="muted">{{ label }}</span><div class="bar {{ dim }}"><div style="width: {{ (value / maxes[dim] * 100) | round }}%"></div></div><strong>{{ value }}/{{ maxes[dim] }}</strong></div>
+      {% endfor %}
+      <ul class="breakdown">
+        {% for item in lead.score_breakdown or [] %}
+        <li><span class="pts">+{{ item.points }}</span><span>{{ item.reason }}</span></li>
+        {% else %}<li class="muted">Sin puntos todavía.</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>🧠 ¿Es un buen lead?</h2></div>
+      <p class="muted small" style="margin-top:0">Tu respuesta entrena el algoritmo.</p>
+      {% if lead.feedback == 1 %}<p><span class="chip green">👍 Marcado como bueno</span></p>
+      {% elif lead.feedback == -1 %}<p><span class="chip red">👎 {{ FEEDBACK_REASONS.get(lead.feedback_reason, "Marcado como malo") }}</span></p>{% endif %}
+      <div class="actions">
+        <form method="post" action="/leads/{{ lead.id }}/feedback" class="inline">
+          <input type="hidden" name="value" value="1"><input type="hidden" name="reason" value="buen_perfil">
+          <button class="btn">👍 Sí</button>
+        </form>
+        <form method="post" action="/leads/{{ lead.id }}/feedback" class="actions">
+          <input type="hidden" name="value" value="-1">
+          <select name="reason" style="width:auto">
+            {% for key, label in FEEDBACK_REASONS.items() if key != "buen_perfil" %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select>
+          <button class="btn">👎 No</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Estado</h2></div>
+      <form method="post" action="/leads/{{ lead.id }}/estado" class="actions">
+        <select name="status" style="flex:1">
+          {% for key, label in STATUS_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if lead.status == key }}>{{ label }}</option>{% endfor %}
+        </select>
+        <button class="btn">Guardar</button>
+      </form>
+      {% if not lead.do_not_contact %}
+      <form method="post" action="/leads/{{ lead.id }}/no-contactar" data-confirm="¿Marcar como 'no contactar'? Es permanente." style="margin-top:10px">
+        <button class="btn btn-red btn-sm">🚫 No contactar nunca</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Datos</h2></div>
+      <dl class="kv">
+        <dt>WhatsApp</dt><dd>{{ lead.whatsapp_e164 or "—" }}{% if lead.whatsapp_confirmed %} <span class="chip green">publicado</span>{% endif %}</dd>
+        <dt>Teléfono</dt><dd>{{ lead.phone_e164 or "—" }}</dd>
+        <dt>Email</dt><dd>{{ lead.email or "—" }}</dd>
+        <dt>Web</dt><dd>{% if lead.website %}<a href="{{ lead.website }}" target="_blank" rel="noopener">{{ lead.website }}</a>{% if lead.has_link_in_bio_only %} <span class="chip amber">solo link en bio</span>{% endif %}{% else %}—{% endif %}</dd>
+        <dt>Fuentes</dt><dd>{% for s in lead.sources %}<div>{{ SOURCE_LABELS.get(s.source, s.source) }}{% if s.source_ref %} <span class="muted">(desde {{ s.source_ref }})</span>{% endif %}</div>{% endfor %}</dd>
+        <dt>Encontrado</dt><dd>{{ lead.first_seen_at|date }}</dd>
+        {% if lead.next_follow_up_at %}<dt>Seguimiento</dt><dd>{{ lead.next_follow_up_at|date }}</dd>{% endif %}
+      </dl>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Notas</h2></div>
+      <form method="post" action="/leads/{{ lead.id }}/notas">
+        <textarea name="notes" style="min-height:90px" placeholder="Algo para recordar…">{{ lead.notes or "" }}</textarea>
+        <button class="btn btn-sm" style="margin-top:8px">Guardar notas</button>
+      </form>
+    </div>
+
+    {% if lead.interactions or lead.status_changes %}
+    <div class="card">
+      <div class="card-head"><h2>Historial</h2></div>
+      <ul class="timeline">
+        {% for i in lead.interactions %}<li><span>✉️</span><span>{{ i.created_at|date }} · contactado por {{ CHANNEL_LABELS.get(i.channel, i.channel) }}</span></li>{% endfor %}
+        {% for c in lead.status_changes %}<li><span>↻</span><span>{{ c.changed_at|date }} · {{ STATUS_LABELS.get(c.to_status, c.to_status) }}{% if c.note %} <span class="muted">— {{ c.note }}</span>{% endif %}</span></li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

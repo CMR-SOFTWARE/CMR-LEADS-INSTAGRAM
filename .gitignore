@@ -27,3 +27,6 @@ instagram-*.zip
 .vscode/
 .idea/
 .DS_Store
+
+# Ajustes de scoring hechos desde el panel (incluye usernames de clientes)
+config/*.local.yaml

@@ -100,7 +100,22 @@ cp .env.example .env                      # completar valores
 cmr-leads init
 ```
 
-## Uso
+## Panel web
+
+```bash
+cmr-leads web            # abre http://127.0.0.1:8000
+```
+
+- **Inicio**: resumen, mejores leads y seguimientos pendientes.
+- **Leads**: buscador, filtros y links directos al Instagram, WhatsApp, web, Google y Maps de cada negocio.
+- **Revisar**: modo rápido, un lead por vez (atajos `A` aprobar, `D` descartar con motivo, `S` saltar).
+- **Detalle**: por qué tiene ese puntaje, mensaje editable, botón "Abrir en WhatsApp" con el texto cargado y "Marcar como contactado".
+- **Algoritmo**: aprende de lo que aprobás y descartás. Muestra qué reglas aciertan, sugiere subir o bajar pesos (las aplicás vos) y deja editarlos a mano. Los ajustes se guardan en `config/scoring.local.yaml`, que no se sube a git. Si descartás un lead como "Ya es cliente" o "Competidor", esa cuenta queda excluida.
+- **Importar**: subir el export de Instagram o un CSV, completar datos y exportar a Excel.
+
+El panel corre solo en tu compu (`127.0.0.1`) y todavía no tiene login (llega en la fase 2).
+
+## Uso por consola
 
 ```bash
 cmr-leads import instagram-export ~/Descargas/instagram-cmr.zip --account cmr.software

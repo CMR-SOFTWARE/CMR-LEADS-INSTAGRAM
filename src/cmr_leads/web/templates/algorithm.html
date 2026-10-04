@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar, score %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Algoritmo</h1><p>Aprende de lo que aprobás y descartás. Vos decidís qué cambios aplicar.</p></div>
+</div>
+
+<div class="kpis">
+  <div class="kpi accent"><div class="value">{{ report.accuracy|pct }}</div><div class="label">Acierto del puntaje</div></div>
+  <div class="kpi"><div class="value">{{ report.labeled }}</div><div class="label">Leads revisados</div></div>
+  <div class="kpi"><div class="value">{{ report.positives }}</div><div class="label">Buenos</div></div>
+  <div class="kpi"><div class="value">{{ report.negatives }}</div><div class="label">Malos</div></div>
+</div>
+
+{% if not report.enough_data %}
+<div class="notice info">Revisá al menos 10 leads para recibir sugerencias (llevás {{ report.labeled }}). La forma más rápida: <a href="/revisar">Revisión rápida</a>.</div>
+{% endif %}
+
+{% if report.suggestions %}
+<div class="card">
+  <div class="card-head">
+    <h2>💡 Sugerencias</h2>
+    <form method="post" action="/algoritmo/aplicar" class="inline"><button class="btn btn-primary">Aplicar todas</button></form>
+  </div>
+  <table>
+    <tr><th>Regla</th><th>Qué pasó</th><th>Peso</th></tr>
+    {% for s in report.suggestions %}
+    <tr>
+      <td><strong>{{ s.label }}</strong></td>
+      <td class="muted">{{ s.positives }} de {{ s.samples }} fueron buenos ({{ s.precision|pct }} vs {{ report.base_rate|pct }} promedio)</td>
+      <td>{{ s.weight }} → <span class="{{ 'delta-up' if s.suggestion > 0 else 'delta-down' }}">{{ s.suggested_weight }}</span></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<form class="card" method="post" action="/algoritmo/pesos">
+  <div class="card-head">
+    <h2>⚖️ Pesos</h2>
+    <div class="actions">
+      {% if has_overrides %}<button class="btn btn-ghost btn-sm" formaction="/algoritmo/restaurar">Restaurar originales</button>{% endif %}
+      <button class="btn btn-primary">Guardar y re-puntuar</button>
+    </div>
+  </div>
+  <div class="grid grid-3">
+    {% for dim, title in [("fit", "Encaje (máx " ~ config.dimension_max.fit ~ ")"), ("need", "Necesidad (máx " ~ config.dimension_max.need ~ ")"), ("reach", "Contacto (máx " ~ config.dimension_max.reach ~ ")")] %}
+    <div>
+      <h3 style="margin-bottom:8px">{{ title }}</h3>
+      <table>
+        {% for rule in sections[dim] %}
+        {% set i = insights[rule] %}
+        <tr>
+          <td>{{ RULE_LABELS[rule] }}{% if i.samples %}<div class="muted small">{{ i.positives }}/{{ i.samples }} buenos</div>{% endif %}</td>
+          <td><input type="number" name="{{ rule }}" value="{{ i.weight }}" min="0" max="100"></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="actions" style="margin-top:16px">
+    <span class="muted small">Umbrales:</span>
+    <label style="margin:0">Interesante ≥</label><input type="number" name="threshold_interesante" value="{{ config.thresholds.interesante }}" style="width:80px">
+    <label style="margin:0">Posible ≥</label><input type="number" name="threshold_posible" value="{{ config.thresholds.posible }}" style="width:80px">
+  </div>
+</form>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>😬 Puntaje alto, pero los descartaste</h2></div>
+    {% for lead in report.false_positives[:8] %}
+      <a href="/leads/{{ lead.id }}" style="display:flex;gap:10px;align-items:center;padding:6px 0;color:inherit">{{ avatar(lead) }}<span style="flex:1">{{ lead.label }}<br><span class="muted small">{{ FEEDBACK_REASONS.get(lead.feedback_reason, "") }}</span></span>{{ score(lead, "sm") }}</a>
+    {% else %}<p class="muted">Ninguno 👌</p>{% endfor %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>🙈 Puntaje bajo, pero te gustaron</h2></div>
+    {% for lead in report.false_negatives[:8] %}
+      <a href="/leads/{{ lead.id }}" style="display:flex;gap:10px;align-items:center;padding:6px 0;color:inherit">{{ avatar(lead) }}<span style="flex:1">{{ lead.label }}</span>{{ score(lead, "sm") }}</a>
+    {% else %}<p class="muted">Ninguno 👌</p>{% endfor %}
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>Motivos de descarte</h2></div>
+    {% for reason, count in report.rejection_reasons %}
+      <div class="dim-row" style="grid-template-columns: 1fr 2fr 30px"><span>{{ FEEDBACK_REASONS.get(reason, reason) }}</span><div class="bar"><div style="width: {{ (count / report.negatives * 100)|round }}%"></div></div><strong>{{ count }}</strong></div>
+    {% else %}<p class="muted">Todavía no descartaste leads con motivo.</p>{% endfor %}
+    <p class="muted small">"Ya es cliente" y "Competidor" excluyen esa cuenta automáticamente. Las palabras clave y rubros se editan en <code>config/scoring.yaml</code>.</p>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Posibles duplicados</h2></div>
+    {% for pair in duplicates %}
+      <div style="padding:4px 0"><a href="/leads/{{ pair.a.id }}">{{ pair.a.label }}</a> ↔ <a href="/leads/{{ pair.b.id }}">{{ pair.b.label }}</a> <span class="muted small">{{ pair.similarity|round|int }}%</span></div>
+    {% else %}<p class="muted">No se detectaron.</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}
