@@ -509,13 +509,22 @@ def web(
         str, typer.Option(help="Usar 0.0.0.0 solo en una red de confianza")
     ] = "127.0.0.1",
     port: Annotated[int, typer.Option()] = 8000,
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help="Abrir el navegador")
+    ] = True,
 ) -> None:
     """Abre el panel web en el navegador (http://127.0.0.1:8000)."""
+    import threading
+    import webbrowser
+
     import uvicorn
 
     settings = get_settings()
     run_migrations(settings.database_url)
-    console.print(f"Panel en [bold]http://{host}:{port}[/bold]  (Ctrl+C para cerrar)")
+    url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
+    console.print(f"Panel en [bold]{url}[/bold]  (Ctrl+C para cerrar)")
+    if open_browser:
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
     uvicorn.run(
         "cmr_leads.web.app:create_app", factory=True, host=host, port=port, log_level="warning"
     )
