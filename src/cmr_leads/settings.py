@@ -1,0 +1,36 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Configuración leída de variables de entorno / `.env`. Nunca credenciales en el código."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    database_url: str = "sqlite:///data/cmr_leads.db"
+    workspace: str = "cmr"
+    default_country: str = "AR"
+    scoring_config: Path = Path("config/scoring.yaml")
+
+    meta_access_token: str | None = None
+    instagram_business_account_id: str | None = None
+    meta_graph_api_version: str = "v23.0"
+    meta_max_lookups_per_day: int = 150
+
+    website_fetch_enabled: bool = True
+    website_timeout_seconds: float = 10.0
+
+    sender_name: str = "Tomás"
+    company_name: str = "CMR Software Solutions"
+    company_city: str = "San Nicolás"
+
+    @property
+    def instagram_configured(self) -> bool:
+        return bool(self.meta_access_token and self.instagram_business_account_id)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

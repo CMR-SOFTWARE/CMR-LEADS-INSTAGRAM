@@ -1,0 +1,29 @@
+# Entorno y secretos
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Datos locales (contienen información de leads)
+data/*
+!data/.gitkeep
+exports/*
+!exports/.gitkeep
+*.db
+*.sqlite3
+
+# Exports de Instagram descargados
+instagram-*.zip
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store

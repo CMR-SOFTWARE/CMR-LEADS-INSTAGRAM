@@ -1,0 +1,154 @@
+# Reglas de scoring de CMR Lead Finder.
+# Todas las keywords se comparan en minúsculas y sin acentos, por palabra completa.
+# Si cambiás reglas, subí `version` y corré `cmr-leads score --all`.
+version: "1"
+
+# Total = fit + need + reach (0-100)
+thresholds:
+  interesante: 70
+  posible: 40
+
+dimension_max:
+  fit: 40      # ¿Es el tipo de negocio que CMR atiende?
+  need: 40     # ¿Tiene una necesidad clara que CMR resuelve?
+  reach: 20    # ¿Se lo puede contactar por un canal público?
+
+# --- Exclusiones duras: no se puntúan, quedan fuera de la cola de revisión ---
+exclusions:
+  # Cuenta propia, clientes actuales, cadenas nacionales, etc.
+  usernames: []
+  competitor_keywords:
+    - desarrollo web
+    - diseno web
+    - disenador web
+    - paginas web
+    - desarrollo de software
+    - software factory
+    - agencia digital
+    - agencia de marketing
+    - marketing digital
+    - community manager
+    - programador
+    - developer
+  institutional_keywords:
+    - municipalidad
+    - municipio
+    - gobierno
+    - ministerio
+    - secretaria de
+    - concejo deliberante
+    - escuela
+    - colegio
+    - universidad
+    - facultad
+    - parroquia
+    - iglesia
+    - partido politico
+  creator_keywords:
+    - influencer
+    - creador de contenido
+    - creadora de contenido
+    - content creator
+    - blogger
+    - ugc
+  creator_categories:
+    - digital creator
+    - creador digital
+    - personal blog
+    - blog personal
+    - public figure
+    - figura publica
+    - artist
+    - artista
+    - gamer
+    - video creator
+
+# --- FIT ---
+fit:
+  business_account: 15        # Business Discovery respondió (cuenta profesional)
+  category: 10                # tiene categoría comercial
+  business_keywords_points: 10
+  business_keywords:
+    - local
+    - tienda
+    - comercio
+    - servicios
+    - emprendimiento
+    - negocio
+    - empresa
+    - consultorio
+    - estudio
+    - envios
+    - pedidos
+    - horarios
+    - atencion
+    - showroom
+    - sucursal
+  business_type_points: 5     # se identificó el rubro
+  local_points: 10
+
+# Rubros (el primero que matchea define business_type)
+business_types:
+  gastronomia: [restaurante, resto, restobar, bar, cafeteria, cafe, pizzeria, hamburgueseria, rotiseria, panaderia, heladeria, parrilla, sushi, pasteleria, comidas, viandas]
+  estetica: [estetica, peluqueria, barberia, nails, manicura, esmaltado, spa, cosmetologia, depilacion, lashes, pestanas, cejas, maquillaje]
+  salud: [consultorio, odontologia, odontologo, odontologa, dentista, kinesiologia, kinesiologo, nutricionista, psicologa, psicologo, medico, medica, clinica, veterinaria, fonoaudiologa, optica, podologia]
+  deportes: [gimnasio, gym, crossfit, pilates, yoga, cancha, canchas, padel, futbol 5, club, entrenamiento, funcional]
+  indumentaria: [indumentaria, ropa, moda, boutique, calzado, zapateria, lenceria, accesorios]
+  inmobiliaria: [inmobiliaria, propiedades, alquileres, bienes raices, desarrollos inmobiliarios]
+  automotor: [taller, mecanica, lubricentro, gomeria, concesionaria, repuestos, lavadero, autopartes]
+  profesional: [abogado, abogada, estudio juridico, contador, contadora, estudio contable, arquitecto, arquitecta, arquitectura, escribania, ingenieria, seguros]
+  educacion: [instituto, academia, clases, cursos, idiomas, apoyo escolar, capacitaciones]
+  eventos: [eventos, salon de fiestas, catering, fotografia, cotillon, ambientacion]
+  comercio: [almacen, kiosco, ferreteria, libreria, jugueteria, regaleria, muebleria, deco, decoracion, dietetica, vinoteca, distribuidora, mayorista, minorista, mercado, verduleria, carniceria, farmacia, perfumeria]
+
+# Rubros que suelen trabajar con turnos/reservas -> candidato a sistema de turnos
+appointment_business_types: [estetica, salud, deportes]
+
+local:
+  city_keywords:
+    - san nicolas
+    - san nicolas de los arroyos
+    - villa constitucion
+    - ramallo
+    - villa ramallo
+    - pergamino
+    - arroyo seco
+  # Códigos de área (sin 0 ni 15)
+  area_codes: ["336", "3400", "3407", "2477"]
+
+# --- NEED ---
+need:
+  no_website: 20              # no tiene sitio: oportunidad directa de web
+  link_in_bio_only: 15        # solo Linktree / WhatsApp / redes
+  website_unreachable: 10
+  website_no_https: 5
+  website_not_mobile: 5
+  sells_by_dm_points: 10
+  sells_by_dm_keywords:
+    - pedidos
+    - pedi
+    - encargos
+    - envios
+    - delivery
+    - consultas por dm
+    - consultas al dm
+    - escribinos
+    - catalogo
+    - precios por privado
+    - venta online
+  appointments_points: 10
+  appointments_keywords:
+    - turnos
+    - turno
+    - reservas
+    - reserva
+    - agenda
+    - agendate
+    - sacá tu turno
+
+# --- REACH ---
+reach:
+  whatsapp_confirmed: 20
+  phone: 12
+  email: 8
+  instagram_only: 3

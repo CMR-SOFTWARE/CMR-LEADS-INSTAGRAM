@@ -1,0 +1,12 @@
+{
+  "relationships_following": [
+    {
+      "title": "pizzeria_don_pepe",
+      "string_list_data": [{"href": "https://www.instagram.com/_u/pizzeria_don_pepe", "timestamp": 1700000002}]
+    },
+    {
+      "title": "",
+      "string_list_data": [{"href": "https://www.instagram.com/gym.fuerza", "value": "gym.fuerza", "timestamp": 1700000003}]
+    }
+  ]
+}
