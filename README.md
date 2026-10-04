@@ -100,6 +100,15 @@ cp .env.example .env                      # completar valores
 cmr-leads init
 ```
 
+## Arranque rápido (doble clic)
+
+Necesitás tener [Python 3.11+](https://www.python.org/downloads/) instalado (en Windows, marcá "Add Python to PATH").
+
+- **Windows:** doble clic en `iniciar.bat`.
+- **Mac / Linux:** `./iniciar.sh`.
+
+La primera vez instala todo (un par de minutos). Después abre el panel en el navegador.
+
 ## Panel web
 
 ```bash
