@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     instagram_business_account_id: str | None = None
     meta_graph_api_version: str = "v23.0"
     meta_max_lookups_per_day: int = 150
+    # Para leer los mensajes directos (opcional): ID de la página de Facebook vinculada.
+    facebook_page_id: str | None = None
+    instagram_posts_to_sync: int = 25
+    meta_max_stats_requests_per_day: int = 300
 
     website_fetch_enabled: bool = True
     website_timeout_seconds: float = 10.0

@@ -78,6 +78,7 @@ SOURCE_LABELS = {
     SourceType.MANUAL: "Carga manual",
     SourceType.CSV_IMPORT: "CSV",
     SourceType.GOOGLE_PLACES: "Google Maps",
+    SourceType.INSTAGRAM_DM: "Instagram (te escribieron)",
 }
 SERVICE_LABELS = {
     "pagina_web": "Página web",
@@ -502,6 +503,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 POSITIVE=POSITIVE,
                 ai_configured=settings.ai_configured,
             )
+
+    # ---------------- Instagram ----------------
+    @app.get("/instagram", response_class=HTMLResponse)
+    def instagram_page(request: Request):
+        from cmr_leads.instagram.analysis import build_report
+
+        with db() as (session, ws):
+            report = build_report(session, ws.id)
+            return render(
+                request,
+                "instagram.html",
+                report=report,
+                configured=settings.instagram_configured,
+                dms_configured=bool(settings.facebook_page_id),
+            )
+
+    @app.post("/instagram/actualizar")
+    def instagram_sync():
+        from cmr_leads.instagram.client import GraphClient
+        from cmr_leads.instagram.sync import daily_budget_guard, sync_instagram
+        from cmr_leads.pipeline.budget import DailyBudget
+        from cmr_leads.replies.service import build_classifier
+
+        if not settings.instagram_configured:
+            return back("/instagram", "Falta configurar la API de Instagram en .env")
+        with db() as (session, ws):
+            budget = DailyBudget(
+                session, ws.id, "meta_stats", settings.meta_max_stats_requests_per_day
+            )
+            client = GraphClient(
+                settings.meta_access_token,
+                settings.meta_graph_api_version,
+                on_request=daily_budget_guard(budget),
+            )
+            result = sync_instagram(
+                session,
+                ws,
+                client,
+                settings.instagram_business_account_id,
+                settings.facebook_page_id,
+                build_classifier(settings),
+                settings.default_country,
+                settings.instagram_posts_to_sync,
+            )
+            config = scoring_config()
+            for lead in session.scalars(
+                select(Lead).where(Lead.workspace_id == ws.id, Lead.business_score.is_(None))
+            ):
+                apply_score(lead, config)
+        return back("/instagram", result.summary())
 
     @app.post("/leads/{lead_id}/notas")
     def lead_notes(lead_id: int, notes: str = Form("")):

@@ -221,3 +221,10 @@ def test_reply_flow_from_panel(client):
     assert "Tasa de respuesta" in stats and "pagina_web" in stats or "Página web" in stats
     outbound = [i for i in _lead(client, id=lead_id).interactions if i.direction == "outbound"]
     assert outbound[0].template == "pagina_web"
+
+
+def test_instagram_page_without_api(client):
+    page = client.get("/instagram").text
+    assert "Falta conectar la API de Instagram" in page
+    response = client.post("/instagram/actualizar")
+    assert "Falta configurar" in _msg(response)

@@ -20,6 +20,7 @@ class SourceType(StrEnum):
     MANUAL = "manual"
     CSV_IMPORT = "csv_import"
     GOOGLE_PLACES = "google_places"
+    INSTAGRAM_DM = "instagram_dm"
 
 
 class IdentifierType(StrEnum):

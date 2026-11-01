@@ -187,3 +187,65 @@ class ApiUsage(Base):
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
     provider: Mapped[str] = mapped_column(String(40))
     used_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class InstagramAccountSnapshot(Base):
+    """Estadísticas de la cuenta de Instagram de CMR, una fila por día sincronizado."""
+
+    __tablename__ = "instagram_account_snapshots"
+    __table_args__ = (UniqueConstraint("workspace_id", "day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    day: Mapped[datetime] = mapped_column(DateTime)
+    followers: Mapped[int | None] = mapped_column(Integer)
+    media_count: Mapped[int | None] = mapped_column(Integer)
+    # Totales de los últimos `period_days` días según la API.
+    period_days: Mapped[int] = mapped_column(Integer, default=30)
+    reach: Mapped[int | None] = mapped_column(Integer)
+    views: Mapped[int | None] = mapped_column(Integer)
+    profile_views: Mapped[int | None] = mapped_column(Integer)
+    website_clicks: Mapped[int | None] = mapped_column(Integer)
+    accounts_engaged: Mapped[int | None] = mapped_column(Integer)
+    total_interactions: Mapped[int | None] = mapped_column(Integer)
+    raw: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class InstagramPost(Base):
+    __tablename__ = "instagram_posts"
+    __table_args__ = (UniqueConstraint("workspace_id", "media_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    media_id: Mapped[str] = mapped_column(String(64))
+    media_type: Mapped[str | None] = mapped_column(String(30))
+    product_type: Mapped[str | None] = mapped_column(String(30))
+    caption: Mapped[str | None] = mapped_column(Text)
+    permalink: Mapped[str | None] = mapped_column(String(300))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    likes: Mapped[int | None] = mapped_column(Integer)
+    comments: Mapped[int | None] = mapped_column(Integer)
+    reach: Mapped[int | None] = mapped_column(Integer)
+    views: Mapped[int | None] = mapped_column(Integer)
+    saves: Mapped[int | None] = mapped_column(Integer)
+    shares: Mapped[int | None] = mapped_column(Integer)
+    total_interactions: Mapped[int | None] = mapped_column(Integer)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    @property
+    def kind(self) -> str:
+        if self.product_type == "REELS" or self.media_type == "VIDEO":
+            return "Reel / video"
+        if self.media_type == "CAROUSEL_ALBUM":
+            return "Carrusel"
+        return "Imagen"
+
+    @property
+    def interactions(self) -> int:
+        if self.total_interactions is not None:
+            return self.total_interactions
+        return sum(v or 0 for v in (self.likes, self.comments, self.saves, self.shares))
+
+    @property
+    def engagement_rate(self) -> float | None:
+        return self.interactions / self.reach if self.reach else None

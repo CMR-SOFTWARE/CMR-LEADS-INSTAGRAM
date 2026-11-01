@@ -533,6 +533,41 @@ def import_whatsapp(
     console.print(f"{result.replies} respuesta(s) nueva(s) registradas.")
 
 
+@app.command("instagram-sync")
+def instagram_sync() -> None:
+    """Trae estadísticas de la cuenta, publicaciones y mensajes directos de Instagram."""
+    from cmr_leads.instagram.client import GraphClient
+    from cmr_leads.instagram.sync import daily_budget_guard, sync_instagram
+    from cmr_leads.pipeline.budget import DailyBudget
+    from cmr_leads.replies.service import build_classifier
+
+    settings = get_settings()
+    if not settings.instagram_configured:
+        _fail("Falta META_ACCESS_TOKEN e INSTAGRAM_BUSINESS_ACCOUNT_ID en .env (ver README).")
+    with workspace_session() as (session, workspace):
+        budget = DailyBudget(
+            session, workspace.id, "meta_stats", settings.meta_max_stats_requests_per_day
+        )
+        client = GraphClient(
+            settings.meta_access_token,
+            settings.meta_graph_api_version,
+            on_request=daily_budget_guard(budget),
+        )
+        result = sync_instagram(
+            session,
+            workspace,
+            client,
+            settings.instagram_business_account_id,
+            settings.facebook_page_id,
+            build_classifier(settings),
+            settings.default_country,
+            settings.instagram_posts_to_sync,
+        )
+    console.print(result.summary())
+    for warning in result.warnings:
+        console.print(f"[yellow]Aviso:[/yellow] {warning}")
+
+
 @app.command()
 def export(
     fmt: Annotated[str, typer.Option("--format", help="csv | xlsx")] = "csv",
