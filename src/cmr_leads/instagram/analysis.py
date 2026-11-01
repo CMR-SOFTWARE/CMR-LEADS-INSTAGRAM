@@ -128,8 +128,10 @@ def recommendations(report: InstagramReport) -> list[str]:
     if len(kinds) >= 2 and kinds[-1].avg_reach:
         ratio = kinds[0].avg_reach / kinds[-1].avg_reach
         if ratio >= 1.3:
+            best = PLURAL.get(kinds[0].name, kinds[0].name)
+            worst = PLURAL.get(kinds[-1].name, kinds[-1].name)
             tips.append(
-                f"Los {kinds[0].name.lower()} llegan a {ratio:.1f}x más gente que los {kinds[-1].name.lower()}. Priorizá ese formato."
+                f"Tus {best} llegan a {ratio:.1f} veces más gente que tus {worst}. Priorizá ese formato."
             )
     if best_day := _best(report.by_weekday):
         tips.append(
