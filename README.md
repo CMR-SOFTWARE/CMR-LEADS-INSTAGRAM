@@ -100,6 +100,13 @@ Si un dato nuevo coincide con otro lead, se **fusionan** conservando todas las f
 interacciones e historial. Los nombres parecidos se listan con `leads duplicates` para fusionarlos
 a mano (`leads merge`).
 
+## Clasificación de respuestas con IA (opcional)
+
+Sin configurar nada, las respuestas se clasifican con reglas (palabras clave). Si ponés
+`ANTHROPIC_API_KEY` en `.env` (la creás en console.anthropic.com), usa Claude: entiende mejor el
+tono, detecta objeciones y sugiere el próximo paso. Cada respuesta cuesta menos de un centavo de
+dólar. Si la IA falla o no hay internet, vuelve a las reglas automáticamente.
+
 ## Contacto: WhatsApp
 
 `cmr-leads message <id>` genera un **borrador** según el servicio sugerido y un **link click-to-chat**
@@ -142,6 +149,7 @@ cmr-leads web            # abre http://127.0.0.1:8000
 - **Revisar**: modo rápido, un lead por vez (atajos `A` aprobar, `D` descartar con motivo, `S` saltar).
 - **Detalle**: por qué tiene ese puntaje, mensaje editable, botón "Abrir en WhatsApp" con el texto cargado y "Marcar como contactado".
 - **Algoritmo**: aprende de lo que aprobás y descartás. Muestra qué reglas aciertan, sugiere subir o bajar pesos (las aplicás vos) y deja editarlos a mano. Los ajustes se guardan en `config/scoring.local.yaml`, que no se sube a git. Si descartás un lead como "Ya es cliente" o "Competidor", esa cuenta queda excluida.
+- **Respuestas**: muestra quién contestó, qué dijo (interesado, pide info, ahora no, no le interesa, no volver a escribir o respuesta automática), las objeciones más comunes y qué mensaje, rubro, servicio, fuente y canal consiguen más respuestas. Las respuestas se cargan en cada lead pegando el texto o subiendo el chat exportado de WhatsApp (en el celu: chat → ⋮ → Más → Exportar chat → Sin archivos). Si pide no recibir más mensajes, el lead queda en "no contactar". Lo que responden también alimenta el algoritmo.
 - **Importar**: subir el export de Instagram o un CSV, completar datos y exportar a Excel.
 
 El panel corre solo en tu compu (`127.0.0.1`) y todavía no tiene login (llega en la fase 2).
@@ -162,7 +170,8 @@ cmr-leads review                          # aprobar / rechazar / no contactar
 
 cmr-leads message 12                      # borrador + link wa.me
 cmr-leads contacted 12 --channel whatsapp
-cmr-leads status 12 replied
+cmr-leads reply 12 "Hola! cuánto sale?"     # registra y clasifica la respuesta
+cmr-leads import whatsapp 12 "Chat de WhatsApp con Pelu.txt"
 
 cmr-leads export --format xlsx
 cmr-leads stats                           # qué fuentes generan mejores leads

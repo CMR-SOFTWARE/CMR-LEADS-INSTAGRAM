@@ -468,10 +468,69 @@ def contacted(
     with workspace_session() as (session, workspace):
         try:
             lead = get_lead(session, workspace.id, lead_id)
-            mark_contacted(session, lead, channel, note)
+            mark_contacted(
+                session,
+                lead,
+                channel,
+                note,
+                generate_message(lead, get_settings()).template.removesuffix(".j2"),
+            )
         except LeadError as exc:
             _fail(str(exc))
     console.print(f"Contacto registrado. Seguimiento: {lead.next_follow_up_at:%Y-%m-%d}.")
+
+
+@app.command()
+def reply(
+    lead_id: int,
+    text: Annotated[str, typer.Argument(help="Lo que respondió el lead")],
+    channel: Annotated[Channel, typer.Option()] = Channel.WHATSAPP,
+) -> None:
+    """Registra y clasifica la respuesta de un lead."""
+    from cmr_leads.replies.classifier import CATEGORIES
+    from cmr_leads.replies.service import build_classifier, register_reply
+
+    settings = get_settings()
+    with workspace_session() as (session, workspace):
+        try:
+            lead = get_lead(session, workspace.id, lead_id)
+        except LeadError as exc:
+            _fail(str(exc))
+        interaction = register_reply(session, lead, text, build_classifier(settings), channel)
+        if interaction is None:
+            _fail("Esa respuesta ya estaba registrada.")
+        analysis = interaction.analysis or {}
+    console.print(f"{CATEGORIES.get(interaction.outcome)} · {analysis.get('suggested_action', '')}")
+
+
+@import_app.command("whatsapp")
+def import_whatsapp(
+    lead_id: int,
+    path: Annotated[
+        Path, typer.Argument(exists=True, dir_okay=False, help="Chat exportado (.txt)")
+    ],
+    my_name: Annotated[str | None, typer.Option(help="Tu nombre como aparece en el chat")] = None,
+) -> None:
+    """Lee un chat exportado de WhatsApp y registra las respuestas del lead."""
+    from cmr_leads.replies.service import build_classifier, import_whatsapp_chat
+
+    settings = get_settings()
+    with workspace_session() as (session, workspace):
+        try:
+            lead = get_lead(session, workspace.id, lead_id)
+        except LeadError as exc:
+            _fail(str(exc))
+        result = import_whatsapp_chat(
+            session,
+            lead,
+            path.read_text(encoding="utf-8-sig", errors="replace"),
+            build_classifier(settings),
+            path.name,
+            my_name or settings.sender_name,
+        )
+    if result.error:
+        _fail(result.error)
+    console.print(f"{result.replies} respuesta(s) nueva(s) registradas.")
 
 
 @app.command()

@@ -197,3 +197,27 @@ def test_google_search_from_panel(client, monkeypatch):
     lead = _lead(client, google_place_id="g1")
     assert lead.display_name == "Gym Uno"
     assert "Google Maps" in client.get("/leads?source=google_places").text
+
+
+def test_reply_flow_from_panel(client):
+    lead_id = _add(client, name="Pelu Lu", whatsapp="3364-123456")
+    client.post(f"/leads/{lead_id}/estado", data={"status": "approved"})
+    client.post(
+        f"/leads/{lead_id}/contactado",
+        data={"channel": "whatsapp", "message": "Hola", "template": "pagina_web.j2"},
+    )
+    response = client.post(f"/leads/{lead_id}/respuesta", data={"text": "Hola! cuánto sale?"})
+    assert "Pide info" in _msg(response)
+    page = client.get(f"/leads/{lead_id}").text
+    assert "Pide info / precio" in page and "cuánto sale?" in page
+    chat = "18/10/26, 10:02 - Tomás: Hola\n18/10/26, 11:00 - Pelu Lu: Por ahora no\n"
+    response = client.post(
+        f"/leads/{lead_id}/chat-whatsapp",
+        data={"my_name": "Tomás"},
+        files={"file": ("Chat de WhatsApp con Pelu Lu.txt", chat.encode(), "text/plain")},
+    )
+    assert "1 respuesta" in _msg(response)
+    stats = client.get("/respuestas").text
+    assert "Tasa de respuesta" in stats and "pagina_web" in stats or "Página web" in stats
+    outbound = [i for i in _lead(client, id=lead_id).interactions if i.direction == "outbound"]
+    assert outbound[0].template == "pagina_web"

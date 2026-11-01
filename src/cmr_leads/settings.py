@@ -26,9 +26,17 @@ class Settings(BaseSettings):
     google_places_max_requests_per_day: int = 100
     search_area: str = "San Nicolás de los Arroyos, Buenos Aires"
 
+    # IA (opcional) para clasificar respuestas. Sin clave se usan reglas.
+    anthropic_api_key: str | None = None
+    ai_model: str = "claude-opus-5-5"
+
     sender_name: str = "Tomás"
     company_name: str = "CMR Software Solutions"
     company_city: str = "San Nicolás"
+
+    @property
+    def ai_configured(self) -> bool:
+        return bool(self.anthropic_api_key)
 
     @property
     def google_places_configured(self) -> bool:

@@ -65,16 +65,24 @@ def mark_do_not_contact(session: Session, lead: Lead, note: str | None = None) -
     lead.do_not_contact = True
     if lead.status in (LeadStatus.NEW, LeadStatus.APPROVED):
         set_status(session, lead, LeadStatus.REJECTED, note or "no contactar")
+    elif lead.status in (LeadStatus.CONTACTED, LeadStatus.REPLIED):
+        set_status(session, lead, LeadStatus.LOST, note or "no contactar")
     lead.next_follow_up_at = None
     session.flush()
 
 
 def mark_contacted(
-    session: Session, lead: Lead, channel: Channel, message: str | None = None
+    session: Session,
+    lead: Lead,
+    channel: Channel,
+    message: str | None = None,
+    template: str | None = None,
 ) -> Interaction:
     if lead.do_not_contact:
         raise LeadError(f"{lead.label} está marcado como 'no contactar'")
-    interaction = Interaction(channel=channel, direction="outbound", message=message)
+    interaction = Interaction(
+        channel=channel, direction="outbound", message=message, template=template
+    )
     lead.interactions.append(interaction)
     lead.contacted_at = utcnow()
     lead.next_follow_up_at = utcnow() + timedelta(days=FOLLOW_UP_DAYS)

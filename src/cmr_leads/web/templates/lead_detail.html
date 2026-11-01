@@ -46,6 +46,7 @@
         </div>
         <form method="post" action="/leads/{{ lead.id }}/contactado" class="actions" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="message" data-sent-message>
+          <input type="hidden" name="template" value="{{ draft.template }}">
           <span class="muted small">¿Ya lo enviaste?</span>
           <select name="channel" style="width:auto">
             {% for key, label in CHANNEL_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if key == draft.channel }}>{{ label }}</option>{% endfor %}
@@ -132,11 +133,47 @@
       </form>
     </div>
 
+    {% if lead.contacted_at or lead.interactions %}
+    <div class="card">
+      <div class="card-head"><h2>💬 Respuestas</h2></div>
+      {% set replies = lead.interactions | selectattr("direction", "equalto", "inbound") | list %}
+      {% for r in replies %}
+        {% set a = r.analysis or {} %}
+        <div class="reply">
+          <div class="chips">
+            <span class="chip {{ 'green' if r.outcome in ('interesado', 'pide_info') else ('red' if r.outcome in ('no_interesa', 'no_contactar') else '') }}">{{ REPLY_CATEGORIES.get(r.outcome, r.outcome) }}</span>
+            {% for o in a.objections or [] %}<span class="chip amber">{{ OBJECTIONS.get(o, o) }}</span>{% endfor %}
+            <span class="muted small">{{ r.created_at|date }}{% if a.source == "ia" %} · IA{% endif %}</span>
+          </div>
+          <p class="reply-text">{{ r.message }}</p>
+          {% if a.suggested_action %}<p class="small muted">👉 {{ a.suggested_action }}</p>{% endif %}
+        </div>
+      {% else %}<p class="muted small">Todavía no registraste respuestas.</p>{% endfor %}
+      <form method="post" action="/leads/{{ lead.id }}/respuesta" style="margin-top:12px">
+        <label>¿Te respondió? Pegá su mensaje</label>
+        <textarea name="text" style="min-height:70px" placeholder="Ej.: Hola! Sí, ¿cuánto saldría?"></textarea>
+        <div class="actions" style="margin-top:8px">
+          <select name="channel" style="width:auto"><option value="whatsapp">WhatsApp</option><option value="instagram_dm">Instagram</option><option value="email">Email</option><option value="phone">Teléfono</option></select>
+          <button class="btn btn-sm btn-primary">Registrar respuesta</button>
+        </div>
+      </form>
+      <form method="post" action="/leads/{{ lead.id }}/chat-whatsapp" enctype="multipart/form-data" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+        <label>O subí el chat exportado de WhatsApp (.txt)</label>
+        <input type="file" name="file" accept=".txt" required>
+        <div class="actions" style="margin-top:8px">
+          <input type="text" name="my_name" placeholder="Tu nombre en el chat (opcional)" style="flex:1">
+          <button class="btn btn-sm">Leer chat</button>
+        </div>
+        <p class="muted small" style="margin:6px 0 0">En el celu: abrí el chat → ⋮ → Más → Exportar chat → Sin archivos.</p>
+      </form>
+    </div>
+    {% endif %}
+
     {% if lead.interactions or lead.status_changes %}
     <div class="card">
       <div class="card-head"><h2>Historial</h2></div>
       <ul class="timeline">
-        {% for i in lead.interactions %}<li><span>✉️</span><span>{{ i.created_at|date }} · contactado por {{ CHANNEL_LABELS.get(i.channel, i.channel) }}</span></li>{% endfor %}
+        {% for i in lead.interactions %}<li><span>{{ "✉️" if i.direction == "outbound" else "💬" }}</span><span>{{ i.created_at|date }} · {{ "enviado por" if i.direction == "outbound" else "respondió por" }} {{ CHANNEL_LABELS.get(i.channel, i.channel) }}</span></li>{% endfor %}
         {% for c in lead.status_changes %}<li><span>↻</span><span>{{ c.changed_at|date }} · {{ STATUS_LABELS.get(c.to_status, c.to_status) }}{% if c.note %} <span class="muted">— {{ c.note }}</span>{% endif %}</span></li>{% endfor %}
       </ul>
     </div>

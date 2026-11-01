@@ -157,6 +157,9 @@ class Interaction(Base):
     direction: Mapped[str] = mapped_column(String(10), default="outbound")
     message: Mapped[str | None] = mapped_column(Text)
     outcome: Mapped[str | None] = mapped_column(String(60))
+    # Plantilla usada (mensajes enviados) y clasificación de la respuesta (mensajes recibidos).
+    template: Mapped[str | None] = mapped_column(String(40))
+    analysis: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     lead: Mapped[Lead] = relationship(back_populates="interactions")
