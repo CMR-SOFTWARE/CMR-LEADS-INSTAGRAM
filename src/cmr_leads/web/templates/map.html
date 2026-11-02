@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<div class="page-head">
+  <div><h1>Mapa</h1><p>Dónde están tus leads y en qué quedó cada uno.</p></div>
+  {% if missing %}
+  <form method="post" action="/mapa/ubicar">
+    <button class="btn btn-primary" {{ 'disabled' if not google_configured }}>📍 Ubicar {{ missing }} locales sin coordenadas</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="map-legend card">
+  {% for g in groups %}
+  <label class="map-toggle">
+    <input type="checkbox" data-group="{{ g.key }}" checked>
+    <span class="map-dot" style="background: {{ g.color }}"></span>
+    {{ g.label }} <strong>{{ counts[g.key] }}</strong>
+  </label>
+  {% endfor %}
+  <span class="muted small" style="margin-left:auto">{{ points|length }} de {{ total }} en el mapa</span>
+</div>
+
+<div id="lead-map" class="card"></div>
+{% if not points %}<p class="muted" style="margin-top:12px">Todavía no hay locales con ubicación. Tocá "Ubicar" para cargarlas desde Google (una sola vez por local).</p>{% endif %}
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(() => {
+  const points = {{ points|tojson }};
+  const colors = Object.fromEntries({{ groups|tojson }}.map((g) => [g.key, g.color]));
+  const map = L.map("lead-map").setView([-33.33, -60.22], 13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const layers = {};
+  const bounds = [];
+  for (const p of points) {
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius: 8, color: "#fff", weight: 2, fillColor: colors[p.group], fillOpacity: 0.95,
+    });
+    const links = [
+      `<a href="/leads/${p.id}">Ver ficha</a>`,
+      p.whatsapp ? `<a href="https://wa.me/${esc(p.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : "",
+      p.instagram ? `<a href="https://instagram.com/${esc(p.instagram)}" target="_blank" rel="noopener">Instagram</a>` : "",
+    ].filter(Boolean).join(" · ");
+    marker.bindPopup(`
+      <strong>${esc(p.name)}</strong><br>
+      <span class="muted">${esc(p.category)}</span><br>
+      ${esc(p.address)}<br>
+      Estado: <strong>${esc(p.status)}</strong>${p.contacted ? ` (enviado ${esc(p.contacted)})` : ""}<br>
+      ${p.score != null ? `Puntaje: <strong>${p.score}</strong> · ` : ""}${esc(p.priority)}<br>
+      ${p.service ? `Ofrecer: ${esc(p.service)}<br>` : ""}
+      <div style="margin-top:6px">${links}</div>`);
+    (layers[p.group] ??= L.layerGroup().addTo(map)).addLayer(marker);
+    bounds.push([p.lat, p.lng]);
+  }
+  if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+
+  document.querySelectorAll("[data-group]").forEach((box) => {
+    box.addEventListener("change", () => {
+      const layer = layers[box.dataset.group];
+      if (layer) box.checked ? layer.addTo(map) : map.removeLayer(layer);
+    });
+  });
+})();
+</script>
+{% endblock %}

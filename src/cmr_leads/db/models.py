@@ -1,7 +1,17 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from cmr_leads.domain.enums import EnrichmentState, LeadStatus
@@ -43,6 +53,8 @@ class Lead(Base):
     province: Mapped[str | None] = mapped_column(String(120))
     country: Mapped[str | None] = mapped_column(String(2))
     address: Mapped[str | None] = mapped_column(String(300))
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
 
     phone_e164: Mapped[str | None] = mapped_column(String(20))
     whatsapp_e164: Mapped[str | None] = mapped_column(String(20))

@@ -73,6 +73,8 @@ def apply_profile(lead: Lead, profile: RawProfile, country: str, overwrite: bool
     _fill(lead, "province", clean_str(profile.province), overwrite)
     _fill(lead, "country", clean_str(profile.country), overwrite)
     _fill(lead, "address", clean_str(profile.address), overwrite)
+    _fill(lead, "latitude", profile.latitude, overwrite)
+    _fill(lead, "longitude", profile.longitude, overwrite)
     _fill(lead, "followers", profile.followers, overwrite)
     _fill(lead, "following", profile.following, overwrite)
     _fill(lead, "posts_count", profile.posts_count, overwrite)

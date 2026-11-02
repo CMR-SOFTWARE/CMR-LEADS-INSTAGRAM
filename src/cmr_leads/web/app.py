@@ -71,6 +71,28 @@ STATUS_LABELS = {
     LeadStatus.WON: "Cliente",
     LeadStatus.LOST: "Perdido",
 }
+# Grupos del mapa: (clave, etiqueta, color, estados que incluye)
+MAP_GROUPS = (
+    ("pendiente", "Pendiente de enviar", "#f59e0b", (LeadStatus.APPROVED,)),
+    ("enviado", "Mensaje enviado", "#3b82f6", (LeadStatus.CONTACTED,)),
+    ("respondio", "Respondió / reunión", "#8b5cf6", (LeadStatus.REPLIED, LeadStatus.MEETING)),
+    ("cliente", "Cliente", "#22c55e", (LeadStatus.WON,)),
+    ("nuevo", "Por revisar", "#94a3b8", (LeadStatus.NEW,)),
+    ("descartado", "Descartado / perdido", "#ef4444", (LeadStatus.REJECTED, LeadStatus.LOST)),
+)
+# Tope propio para pedir ubicaciones a Google (Place Details Essentials: 10.000 gratis por mes).
+MAX_LOCATION_LOOKUPS_PER_MONTH = 3000
+
+
+def _map_group(lead: Lead) -> str:
+    if lead.excluded or lead.do_not_contact:
+        return "descartado"
+    for key, _, _, statuses in MAP_GROUPS:
+        if lead.status in statuses:
+            return key
+    return "nuevo"
+
+
 SOURCE_LABELS = {
     SourceType.CMR_FOLLOWING: "Seguidos de CMR",
     SourceType.CMR_FOLLOWERS: "Seguidores de CMR",
@@ -560,6 +582,95 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 POSITIVE=POSITIVE,
                 ai_configured=settings.reply_ai_configured,
             )
+
+    # ---------------- Mapa ----------------
+    @app.get("/mapa", response_class=HTMLResponse)
+    def lead_map(request: Request):
+        with db() as (session, ws):
+            leads = list(session.scalars(select(Lead).where(Lead.workspace_id == ws.id)))
+            points = []
+            counts = {key: 0 for key, *_ in MAP_GROUPS}
+            for lead in leads:
+                group = _map_group(lead)
+                counts[group] += 1
+                if lead.latitude is None or lead.longitude is None:
+                    continue
+                points.append(
+                    {
+                        "id": lead.id,
+                        "lat": lead.latitude,
+                        "lng": lead.longitude,
+                        "group": group,
+                        "name": lead.label,
+                        "category": lead.category or "",
+                        "address": lead.address or "",
+                        "score": lead.business_score,
+                        "priority": lead.priority or "",
+                        "service": SERVICE_LABELS.get(lead.recommended_service or "", ""),
+                        "status": STATUS_LABELS.get(lead.status, lead.status),
+                        "whatsapp": (lead.whatsapp_e164 or "").lstrip("+"),
+                        "instagram": lead.instagram_username or "",
+                        "contacted": f"{lead.contacted_at:%d/%m/%Y}" if lead.contacted_at else "",
+                    }
+                )
+            missing = sum(1 for lead in leads if lead.latitude is None and lead.google_place_id)
+            return render(
+                request,
+                "map.html",
+                active="map",
+                points=points,
+                counts=counts,
+                total=len(leads),
+                missing=missing,
+                groups=[
+                    {"key": k, "label": label, "color": color} for k, label, color, _ in MAP_GROUPS
+                ],
+                google_configured=settings.google_places_configured,
+            )
+
+    @app.post("/mapa/ubicar")
+    def lead_map_locate():
+        from cmr_leads.pipeline.budget import MonthlyBudget
+        from cmr_leads.sources.google_places import GooglePlacesClient, PlacesApiError
+
+        if not settings.google_places_configured:
+            return back("/mapa", "Falta configurar GOOGLE_PLACES_API_KEY en el archivo .env")
+        client = GooglePlacesClient(settings.google_places_api_key)
+        located = failed = 0
+        stopped = None
+        with db() as (session, ws):
+            budget = MonthlyBudget(
+                session, ws.id, "google_places_location", MAX_LOCATION_LOOKUPS_PER_MONTH
+            )
+            pending = session.scalars(
+                select(Lead).where(
+                    Lead.workspace_id == ws.id,
+                    Lead.latitude.is_(None),
+                    Lead.google_place_id.is_not(None),
+                )
+            )
+            for lead in pending:
+                if budget.remaining() <= 0:
+                    stopped = f"tope mensual de {MAX_LOCATION_LOOKUPS_PER_MONTH} ubicaciones"
+                    break
+                try:
+                    location = client.get_location(lead.google_place_id)
+                except PlacesApiError as exc:
+                    stopped = f"error de Google: {exc}"
+                    break
+                finally:
+                    budget.consume()
+                if location:
+                    lead.latitude, lead.longitude = location
+                    located += 1
+                else:
+                    failed += 1
+        msg = f"{located} locales ubicados en el mapa"
+        if failed:
+            msg += f", {failed} sin ubicación"
+        if stopped:
+            msg += f" · se detuvo: {stopped}"
+        return back("/mapa", msg)
 
     # ---------------- Instagram ----------------
     @app.get("/instagram", response_class=HTMLResponse)

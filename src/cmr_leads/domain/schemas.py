@@ -26,6 +26,8 @@ class RawProfile(BaseModel):
     posts_count: int | None = None
     is_business_account: bool | None = None
     google_place_id: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     notes: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 

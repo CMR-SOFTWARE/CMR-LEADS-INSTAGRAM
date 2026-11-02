@@ -15,10 +15,13 @@ from cmr_leads.domain.schemas import RawProfile, SourceRecord
 from cmr_leads.pipeline.normalize import normalize_username, url_domain
 
 SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+# Place Details pidiendo solo la ubicación: SKU "Essentials" (10.000 gratis por mes).
+DETAILS_URL = "https://places.googleapis.com/v1/places/{place_id}"
 FIELDS = (
     "places.id",
     "places.displayName",
     "places.formattedAddress",
+    "places.location",
     "places.addressComponents",
     "places.nationalPhoneNumber",
     "places.internationalPhoneNumber",
@@ -130,6 +133,23 @@ class GooglePlacesClient:
             raise PlacesApiError(message)
         return payload.get("places", []), payload.get("nextPageToken")
 
+    def get_location(self, place_id: str) -> tuple[float, float] | None:
+        response = self._http.get(
+            DETAILS_URL.format(place_id=place_id),
+            headers={"X-Goog-Api-Key": self._api_key, "X-Goog-FieldMask": "location"},
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise PlacesApiError(f"Respuesta inválida de Google ({response.status_code})") from exc
+        if response.status_code >= 400 or "error" in payload:
+            message = (payload.get("error") or {}).get("message", f"HTTP {response.status_code}")
+            raise PlacesApiError(message)
+        location = payload.get("location") or {}
+        if "latitude" not in location:
+            return None
+        return location["latitude"], location["longitude"]
+
 
 def _component(place: dict, kind: str) -> str | None:
     for component in place.get("addressComponents") or []:
@@ -152,6 +172,8 @@ def place_to_profile(place: dict) -> RawProfile:
         phone=place.get("internationalPhoneNumber") or place.get("nationalPhoneNumber"),
         website=None if instagram else website,
         address=place.get("formattedAddress"),
+        latitude=(place.get("location") or {}).get("latitude"),
+        longitude=(place.get("location") or {}).get("longitude"),
         city=_component(place, "locality"),
         province=_component(place, "administrative_area_level_1"),
         country="AR",

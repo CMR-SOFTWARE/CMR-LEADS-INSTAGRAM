@@ -260,3 +260,38 @@ def test_instagram_page_without_api(client):
     assert "Falta conectar la API de Instagram" in page
     response = client.post("/instagram/actualizar")
     assert "Falta configurar" in _msg(response)
+
+
+def test_map_shows_leads_by_status_and_locates_missing(client, monkeypatch):
+    import cmr_leads.sources.google_places as gp
+
+    class FakeClient:
+        def __init__(self, api_key):
+            pass
+
+        def search_text(self, query, page_token=None):
+            return [
+                {
+                    "id": "m1",
+                    "displayName": {"text": "Gym Norte"},
+                    "location": {"latitude": -33.33, "longitude": -60.22},
+                },
+                {"id": "m2", "displayName": {"text": "Gym Sur"}},
+            ], None
+
+        def get_location(self, place_id):
+            assert place_id == "m2"
+            return (-33.34, -60.21)
+
+    monkeypatch.setattr(gp, "GooglePlacesClient", FakeClient)
+    client.app.state.settings.google_places_api_key = "k"
+    client.post("/importar/google", data={"query": "gimnasio"})
+    assert _lead(client, google_place_id="m1").latitude == -33.33
+
+    page = client.get("/mapa").text
+    assert "Gym Norte" in page and "Ubicar 1 locales" in page
+
+    response = client.post("/mapa/ubicar")
+    assert "1 locales ubicados" in _msg(response)
+    assert _lead(client, google_place_id="m2").longitude == -60.21
+    assert "Gym Sur" in client.get("/mapa").text
