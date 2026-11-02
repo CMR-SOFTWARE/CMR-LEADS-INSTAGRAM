@@ -100,6 +100,20 @@ def phone_key(e164: str | None) -> str | None:
     return digits
 
 
+def is_mobile(e164: str | None) -> bool:
+    """Celular según el plan de numeración (en Argentina, +54 9 …). Los fijos no suelen tener WhatsApp."""
+    if not e164:
+        return False
+    try:
+        number = phonenumbers.parse(e164)
+    except phonenumbers.NumberParseException:
+        return False
+    return phonenumbers.number_type(number) in (
+        phonenumbers.PhoneNumberType.MOBILE,
+        phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE,
+    ) and (not e164.startswith("+54") or e164.startswith("+549"))
+
+
 def to_whatsapp_e164(e164: str | None) -> str | None:
     """WhatsApp en Argentina usa el formato de celular: +54 9 <área> <número>."""
     if not e164:

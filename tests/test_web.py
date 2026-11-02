@@ -197,3 +197,35 @@ def test_google_search_from_panel(client, monkeypatch):
     lead = _lead(client, google_place_id="g1")
     assert lead.display_name == "Gym Uno"
     assert "Google Maps" in client.get("/leads?source=google_places").text
+
+
+def test_google_search_several_rubros_and_areas(client, monkeypatch):
+    import cmr_leads.sources.google_places as gp
+
+    queries = []
+
+    class FakeClient:
+        def __init__(self, api_key):
+            pass
+
+        def search_text(self, query, page_token=None):
+            queries.append(query)
+            n = len(queries)
+            return [{"id": f"p{n}", "displayName": {"text": f"Negocio {n}"}}], None
+
+    monkeypatch.setattr(gp, "GooglePlacesClient", FakeClient)
+    client.app.state.settings.google_places_api_key = "k"
+    response = client.post(
+        "/importar/google",
+        data={
+            "query": "peluquería, barbería",
+            "area": "Ramallo, Buenos Aires\nSan Pedro, Buenos Aires",
+        },
+    )
+    assert queries == [
+        "peluquería en Ramallo, Buenos Aires",
+        "barbería en Ramallo, Buenos Aires",
+        "peluquería en San Pedro, Buenos Aires",
+        "barbería en San Pedro, Buenos Aires",
+    ]
+    assert "4 búsquedas: 4 nuevos" in _msg(response)

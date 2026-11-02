@@ -22,7 +22,7 @@ def test_local_business_without_website_is_interesting(scoring_config):
     assert result.business_type == "estetica"
     assert result.is_local
     assert result.priority == Priority.HIGH
-    assert result.recommended_service == "sistema_turnos"
+    assert result.recommended_service == "cmr_nexo"
     assert result.total == result.fit + result.need + result.reach
     assert any("sin sitio web" in item["reason"] for item in result.breakdown)
 
@@ -101,3 +101,12 @@ def test_keyword_matching_uses_word_boundaries(scoring_config):
     # "barbara" no debe matchear "bar"; "cafeteria" sí.
     result = score(_input(display_name="Barbara López"), scoring_config)
     assert result.business_type is None
+
+
+def test_recommends_own_products_by_rubro(scoring_config):
+    canchas = score(_input(display_name="Pádel Norte", category="Club de pádel"), scoring_config)
+    nexo = score(_input(display_name="Peluquería Sofi", category="Peluquería"), scoring_config)
+    gym = score(_input(display_name="Gimnasio Ironman", category="Gimnasio"), scoring_config)
+    assert canchas.recommended_service == "cmr_canchas"
+    assert nexo.recommended_service == "cmr_nexo"
+    assert gym.recommended_service == "sistema_turnos"

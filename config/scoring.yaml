@@ -103,6 +103,9 @@ business_types:
 
 # Rubros que suelen trabajar con turnos/reservas -> candidato a sistema de turnos
 appointment_business_types: [estetica, salud, deportes]
+# Productos propios: CMR Nexo (turnos por profesional) y CMR Canchas (reservas de canchas)
+nexo_business_types: [estetica, salud]
+canchas_keywords: [cancha, canchas, padel, futbol 5, futbol 7, futbol, tenis, complejo deportivo, fulbito]
 
 local:
   city_keywords:

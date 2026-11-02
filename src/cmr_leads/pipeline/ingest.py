@@ -11,6 +11,7 @@ from cmr_leads.pipeline.dedup import find_matching_leads, lead_identifiers, sync
 from cmr_leads.pipeline.normalize import (
     clean_str,
     is_aggregator_domain,
+    is_mobile,
     normalize_email,
     normalize_phone,
     normalize_url,
@@ -89,6 +90,10 @@ def apply_profile(lead: Lead, profile: RawProfile, country: str, overwrite: bool
         _fill(lead, "whatsapp_e164", whatsapp, overwrite)
         lead.whatsapp_confirmed = True
     _fill(lead, "phone_e164", normalize_phone(profile.phone, country), overwrite)
+    if not lead.whatsapp_e164 and is_mobile(lead.phone_e164):
+        # Un celular casi siempre tiene WhatsApp, pero queda sin confirmar.
+        lead.whatsapp_e164 = to_whatsapp_e164(lead.phone_e164)
+        lead.whatsapp_confirmed = False
     _fill(lead, "email", normalize_email(profile.email), overwrite)
 
     if profile.notes:

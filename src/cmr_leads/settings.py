@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     workspace: str = "cmr"
     default_country: str = "AR"
     scoring_config: Path = Path("config/scoring.yaml")
+    catalog_path: Path = Path("config/catalogo.md")
 
     meta_access_token: str | None = None
     instagram_business_account_id: str | None = None
@@ -24,7 +25,12 @@ class Settings(BaseSettings):
 
     google_places_api_key: str | None = None
     google_places_max_requests_per_day: int = 100
+    # Google regala 1.000 consultas/mes de Text Search Enterprise; se deja margen para no pagar.
+    google_places_max_requests_per_month: int = 900
     search_area: str = "San Nicolás de los Arroyos, Buenos Aires"
+
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-3.8-flash"
 
     sender_name: str = "Tomás"
     company_name: str = "CMR Software Solutions"
@@ -33,6 +39,10 @@ class Settings(BaseSettings):
     @property
     def google_places_configured(self) -> bool:
         return bool(self.google_places_api_key)
+
+    @property
+    def ai_configured(self) -> bool:
+        return bool(self.gemini_api_key)
 
     @property
     def instagram_configured(self) -> bool:

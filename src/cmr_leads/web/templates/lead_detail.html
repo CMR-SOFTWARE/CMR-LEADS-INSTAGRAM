@@ -30,7 +30,7 @@
 <div class="detail-grid" style="margin-top:16px">
   <div>
     <div class="card message-box" data-message>
-      <div class="card-head"><h2>✉️ Mensaje</h2>{% if draft %}<span class="muted small">Editalo antes de enviar</span>{% endif %}</div>
+      <div class="card-head"><h2>✉️ Mensaje</h2>{% if draft %}<span class="muted small">{{ "Redactado con IA · " if ai_draft }}Editalo antes de enviar</span>{% endif %}</div>
       {% if lead.do_not_contact %}
         <p class="muted">Este lead pidió no ser contactado.</p>
       {% elif draft %}
@@ -43,7 +43,11 @@
           <a class="btn btn-instagram" data-dm href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ icon("instagram") }} Copiar y abrir DM</a>
           {% endif %}
           <button class="btn" type="button" data-copy>📋 Copiar</button>
+          <form method="post" action="/leads/{{ lead.id }}/mensaje-ia" style="display:inline">
+            <button class="btn" {{ 'disabled title="Falta GEMINI_API_KEY en .env"'|safe if not ai_configured }}>✨ {{ "Otra versión con IA" if ai_draft else "Redactar con IA" }}</button>
+          </form>
         </div>
+        {% if lead.whatsapp_e164 and not lead.whatsapp_confirmed %}<p class="muted small" style="margin:8px 0 0">WhatsApp sin confirmar: es el celular que figura en Google.</p>{% endif %}
         <form method="post" action="/leads/{{ lead.id }}/contactado" class="actions" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="message" data-sent-message>
           <span class="muted small">¿Ya lo enviaste?</span>

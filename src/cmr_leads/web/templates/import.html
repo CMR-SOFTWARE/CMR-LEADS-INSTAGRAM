@@ -7,13 +7,15 @@
   <p class="muted small" style="margin-top:0">Busca por rubro con la API oficial de Google y carga nombre, teléfono, web y dirección. Hasta 60 resultados por búsqueda.</p>
   {% if not google_configured %}<div class="notice">Agregá <code>GOOGLE_PLACES_API_KEY</code> en el archivo <code>.env</code> y reiniciá el programa (ver README → "Google Places").</div>{% endif %}
   <div class="search-grid">
-    <div class="field"><label>Rubro</label><input type="text" name="query" list="rubros" placeholder="peluquería, gimnasio, ferretería…"></div>
-    <div class="field"><label>Zona</label><input type="text" name="area" value="{{ search_area }}"></div>
-    <div class="field"><label>Cantidad</label><select name="max_results"><option value="20">20</option><option value="40">40</option><option value="60">60</option></select></div>
+    <div class="field"><label>Rubros <span class="muted small">(separados por coma)</span></label><textarea name="query" rows="3" data-terms="rubros" placeholder="peluquería, gimnasio, ferretería…"></textarea></div>
+    <div class="field"><label>Localidades <span class="muted small">(una por línea)</span></label><textarea name="area" rows="3" data-terms="zonas">{{ search_area }}</textarea></div>
+    <div class="field"><label>Por búsqueda</label><select name="max_results"><option value="20">20</option><option value="40">40</option><option value="60">60</option></select></div>
     <div class="field"><button class="btn btn-primary" {{ 'disabled' if not google_configured }}>Buscar</button></div>
   </div>
-  <datalist id="rubros">{% for q in suggested_queries %}<option value="{{ q }}">{% endfor %}</datalist>
-  <div class="chips"><span class="muted small">Búsqueda rápida:</span>{% for q in suggested_queries[:10] %}<button class="chip chip-btn" type="submit" name="quick" value="{{ q }}" {{ 'disabled' if not google_configured }}>{{ q }}</button>{% endfor %}</div>
+  <p class="muted small" style="margin:4px 0 0">Se busca cada rubro en cada localidad (hasta 12 búsquedas por clic). Cada 20 resultados es 1 consulta a Google.</p>
+  <p class="small" style="margin:4px 0 0"><strong>Consultas a Google:</strong> este mes {{ google_usage.month }} de {{ google_usage.month_limit }} · hoy {{ google_usage.today }} de {{ google_usage.day_limit }} <span class="muted">(Google regala 1.000 por mes; al llegar al tope la app deja de buscar)</span></p>
+  <div class="chips"><span class="muted small">Sumar rubro:</span>{% for q in suggested_queries %}<button class="chip chip-btn" type="button" data-add="rubros" value="{{ q }}">{{ q }}</button>{% endfor %}</div>
+  <div class="chips"><span class="muted small">Sumar localidad:</span>{% for a in suggested_areas %}<button class="chip chip-btn" type="button" data-add="zonas" value="{{ a }}">{{ a.split(",")[0] }}</button>{% endfor %}</div>
 </form>
 
 <div class="grid grid-2">

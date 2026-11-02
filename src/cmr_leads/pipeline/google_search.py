@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from cmr_leads.db.models import Workspace
-from cmr_leads.pipeline.budget import DailyBudget
+from cmr_leads.pipeline.budget import DailyBudget, MonthlyBudget
 from cmr_leads.pipeline.ingest import ingest
 from cmr_leads.pipeline.scoring import ScoringConfig, apply_score
 from cmr_leads.sources.google_places import (
@@ -45,6 +45,7 @@ def run_google_search(
     budget_limit: int,
     country: str,
     config: ScoringConfig,
+    monthly_limit: int | None = None,
 ) -> GoogleSearchResult:
     result = GoogleSearchResult()
     budget = DailyBudget(session, workspace.id, PROVIDER_GOOGLE_PLACES, budget_limit)
@@ -52,6 +53,15 @@ def run_google_search(
     if remaining <= 0:
         result.stopped_reason = f"se alcanzó el tope diario de Google ({budget_limit} búsquedas)"
         return result
+    if monthly_limit is not None:
+        monthly = MonthlyBudget(session, workspace.id, PROVIDER_GOOGLE_PLACES, monthly_limit)
+        if monthly.remaining() <= 0:
+            result.stopped_reason = (
+                f"se alcanzó el tope mensual de Google ({monthly_limit} consultas): "
+                "así no se pasa del cupo gratis"
+            )
+            return result
+        remaining = min(remaining, monthly.remaining())
 
     pages_wanted = max(1, -(-max_results // PAGE_SIZE))
     source = GooglePlacesSource(
@@ -77,5 +87,5 @@ def run_google_search(
         and not result.stopped_reason
         and remaining < pages_wanted
     ):
-        result.stopped_reason = "se alcanzó el tope diario de Google"
+        result.stopped_reason = "se alcanzó el tope de consultas a Google"
     return result

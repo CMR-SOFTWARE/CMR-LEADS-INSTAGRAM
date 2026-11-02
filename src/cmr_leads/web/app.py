@@ -7,6 +7,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus, urlencode, urlparse
@@ -77,7 +78,24 @@ SOURCE_LABELS = {
     SourceType.CSV_IMPORT: "CSV",
     SourceType.GOOGLE_PLACES: "Google Maps",
 }
+# Cada búsqueda son 1 a 3 requests pagas a Google: se limita cuántas se lanzan por clic.
+MAX_SEARCHES_PER_CLICK = 12
+
+
+def _split_terms(value: str, commas: bool = True) -> list[str]:
+    """Una por línea (o separadas por ';'); los rubros también por coma. Sin repetidos.
+
+    Las localidades no se cortan por coma: "Ramallo, Buenos Aires" es una sola.
+    """
+    parts = [p for line in value.splitlines() for p in line.split(";")]
+    if commas:
+        parts = [t for p in parts for t in p.split(",")]
+    return list(dict.fromkeys(t.strip() for t in parts if t.strip()))
+
+
 SERVICE_LABELS = {
+    "cmr_nexo": "CMR Nexo",
+    "cmr_canchas": "CMR Canchas",
     "pagina_web": "Página web",
     "tienda_online": "Tienda online",
     "sistema_turnos": "Sistema de turnos",
@@ -169,6 +187,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         LeadStatus=LeadStatus,
         Priority=Priority,
         company=settings.company_name,
+        # Cambia cuando se actualizan los estáticos, para que el navegador no use una copia vieja.
+        asset_version=max(int(f.stat().st_mtime) for f in (WEB_DIR / "static").iterdir()),
     )
     env.filters.update(
         initials=_initials,
@@ -368,15 +388,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             draft = None
             if lead.status in CONTACTABLE_STATUSES and not lead.do_not_contact:
                 draft = generate_message(lead, settings)
+                if ai_text := (lead.raw_data or {}).get("ai_message"):
+                    draft = replace(draft, text=ai_text)
             config = scoring_config()
             return render(
                 request,
                 "lead_detail.html",
                 lead=lead,
                 draft=draft,
+                ai_draft=bool((lead.raw_data or {}).get("ai_message")),
+                ai_configured=settings.ai_configured,
                 active="leads",
                 maxes=config.dimension_max,
             )
+
+    @app.post("/leads/{lead_id}/mensaje-ia")
+    def lead_ai_message(lead_id: int):
+        from cmr_leads.enrichment.website import fetch_website_signals
+        from cmr_leads.messaging.ai_writer import AiWriterError, write_message
+        from cmr_leads.pipeline.enrich import enrich_website
+
+        if not settings.ai_configured:
+            return back(f"/leads/{lead_id}", "Falta configurar GEMINI_API_KEY en el archivo .env")
+        with db() as (session, ws):
+            try:
+                lead = get_lead(session, ws.id, lead_id)
+            except LeadError:
+                return back("/leads", f"No existe el lead #{lead_id}")
+            # Para que la IA sepa cómo está su web, se analiza la home si todavía no se hizo.
+            if (
+                lead.website
+                and "website" not in (lead.raw_data or {})
+                and settings.website_fetch_enabled
+            ):
+                enrich_website(
+                    lead,
+                    lambda url: fetch_website_signals(
+                        url, timeout=settings.website_timeout_seconds
+                    ),
+                    settings.default_country,
+                )
+            try:
+                text = write_message(lead, settings)
+            except AiWriterError as exc:
+                return back(f"/leads/{lead_id}", str(exc))
+            lead.raw_data = {**(lead.raw_data or {}), "ai_message": text}
+        return back(f"/leads/{lead_id}", "Mensaje redactado con IA: revisalo antes de enviar")
 
     @app.post("/leads/{lead_id}/estado")
     def lead_status(
@@ -564,7 +621,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 or 0
             )
-        from cmr_leads.sources.google_places import SUGGESTED_QUERIES
+            from cmr_leads.pipeline.budget import DailyBudget, MonthlyBudget
+            from cmr_leads.pipeline.google_search import PROVIDER_GOOGLE_PLACES
+
+            google_usage = {
+                "today": DailyBudget(session, ws.id, PROVIDER_GOOGLE_PLACES, 0).used(),
+                "day_limit": settings.google_places_max_requests_per_day,
+                "month": MonthlyBudget(session, ws.id, PROVIDER_GOOGLE_PLACES, 0).used(),
+                "month_limit": settings.google_places_max_requests_per_month,
+            }
+        from cmr_leads.sources.google_places import SUGGESTED_AREAS, SUGGESTED_QUERIES
 
         return render(
             request,
@@ -574,6 +640,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             google_configured=settings.google_places_configured,
             search_area=settings.search_area,
             suggested_queries=SUGGESTED_QUERIES,
+            suggested_areas=SUGGESTED_AREAS,
+            google_usage=google_usage,
         )
 
     def _ingest_source(source, label: str) -> str:
@@ -641,22 +709,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if not settings.google_places_configured:
             return back("/importar", "Falta configurar GOOGLE_PLACES_API_KEY en el archivo .env")
-        query = (quick or query).strip()
-        if not query:
+        queries = _split_terms(quick or query)
+        areas = _split_terms(area, commas=False) or [settings.search_area]
+        if not queries:
             return back("/importar", "Escribí qué rubro buscar")
+        combos = [(q, a) for a in areas for q in queries]
+        skipped = max(0, len(combos) - MAX_SEARCHES_PER_CLICK)
+        client = GooglePlacesClient(settings.google_places_api_key)
+        created = existing = 0
+        stopped = None
         with db() as (session, ws):
-            result = run_google_search(
-                session,
-                ws,
-                GooglePlacesClient(settings.google_places_api_key),
-                query,
-                area.strip() or settings.search_area,
-                min(max(max_results, 1), 60),
-                settings.google_places_max_requests_per_day,
-                settings.default_country,
-                scoring_config(),
+            for q, a in combos[:MAX_SEARCHES_PER_CLICK]:
+                result = run_google_search(
+                    session,
+                    ws,
+                    client,
+                    q,
+                    a,
+                    min(max(max_results, 1), 60),
+                    settings.google_places_max_requests_per_day,
+                    settings.default_country,
+                    scoring_config(),
+                    monthly_limit=settings.google_places_max_requests_per_month,
+                )
+                session.commit()
+                created += result.created
+                existing += result.existing
+                if result.stopped_reason:
+                    stopped = result.stopped_reason
+                    break
+        msg = f"{len(combos) - skipped} búsquedas: {created} nuevos, {existing} ya estaban"
+        if skipped:
+            msg += (
+                f" · {skipped} búsquedas no se hicieron (máximo {MAX_SEARCHES_PER_CLICK} por vez)"
             )
-        return back("/leads?source=google_places", result.summary(query))
+        if stopped:
+            msg += f" · se detuvo: {stopped}"
+        return back("/leads?source=google_places", msg)
 
     @app.post("/acciones/enriquecer")
     def action_enrich(limit: int = Form(20)):

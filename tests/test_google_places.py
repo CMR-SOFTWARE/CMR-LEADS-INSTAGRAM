@@ -165,3 +165,31 @@ def test_google_lead_merges_with_instagram_lead_by_phone(session, workspace, sco
     lead = session.query(Lead).one()
     assert lead.instagram_username == "pelu.uno" and lead.google_place_id == "place1"
     assert {s.source for s in lead.sources} == {"cmr_followers", "google_places"}
+
+
+def test_monthly_limit_stops_searches(session, workspace, scoring_config):
+    from cmr_leads.db.models import ApiUsage
+    from cmr_leads.pipeline.google_search import PROVIDER_GOOGLE_PLACES
+
+    for _ in range(3):
+        session.add(ApiUsage(workspace_id=workspace.id, provider=PROVIDER_GOOGLE_PLACES))
+    session.flush()
+
+    class NeverCalled:
+        def search_text(self, query, page_token=None):
+            raise AssertionError("no debería consultar a Google")
+
+    result = run_google_search(
+        session,
+        workspace,
+        NeverCalled(),
+        "gimnasio",
+        "San Nicolás",
+        20,
+        100,
+        "AR",
+        scoring_config,
+        monthly_limit=3,
+    )
+    assert result.requests == 0
+    assert "tope mensual" in result.stopped_reason

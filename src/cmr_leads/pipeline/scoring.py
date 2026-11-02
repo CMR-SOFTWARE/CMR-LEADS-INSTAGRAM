@@ -69,6 +69,8 @@ class ScoringConfig(BaseModel):
     fit: FitRules = Field(default_factory=FitRules)
     business_types: dict[str, list[str]] = Field(default_factory=dict)
     appointment_business_types: list[str] = Field(default_factory=list)
+    nexo_business_types: list[str] = Field(default_factory=list)
+    canchas_keywords: list[str] = Field(default_factory=list)
     local: LocalRules = Field(default_factory=LocalRules)
     need: NeedRules = Field(default_factory=NeedRules)
     reach: ReachRules = Field(default_factory=ReachRules)
@@ -316,7 +318,11 @@ def score(data: ScoringInput, config: ScoringConfig) -> ScoreResult:
         or _contains_any(text, fit_rules.business_keywords)
     )
 
-    if business_type in config.appointment_business_types or appointments:
+    if _contains_any(text_with_username, config.canchas_keywords):
+        result.recommended_service = "cmr_canchas"
+    elif business_type in config.nexo_business_types:
+        result.recommended_service = "cmr_nexo"
+    elif business_type in config.appointment_business_types or appointments:
         result.recommended_service = "sistema_turnos"
     elif sells_by_dm and (not data.has_website):
         result.recommended_service = "tienda_online"

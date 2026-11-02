@@ -49,3 +49,19 @@ function toast(text) {
 document.querySelectorAll("[data-confirm]").forEach((form) => {
   form.addEventListener("submit", (e) => { if (!confirm(form.dataset.confirm)) e.preventDefault(); });
 });
+
+// Filtros del listado: se aplican apenas se elige una opción.
+document.querySelectorAll("form.filters select").forEach((select) => {
+  select.addEventListener("change", () => select.form.submit());
+});
+
+// Búsqueda en Google: los chips suman rubros (por coma) o localidades (una por línea).
+document.querySelectorAll("[data-add]").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const field = document.querySelector(`[data-terms="${chip.dataset.add}"]`);
+    const sep = chip.dataset.add === "zonas" ? "\n" : ", ";
+    const current = field.value.split(sep === "\n" ? /\n/ : /,/).map((t) => t.trim()).filter(Boolean);
+    if (!current.includes(chip.value)) field.value = [...current, chip.value].join(sep);
+    field.focus();
+  });
+});

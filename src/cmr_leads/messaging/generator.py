@@ -16,6 +16,8 @@ SERVICE_TEMPLATES = {
     "pagina_web": "pagina_web.j2",
     "tienda_online": "tienda_online.j2",
     "sistema_turnos": "sistema_turnos.j2",
+    "cmr_nexo": "cmr_nexo.j2",
+    "cmr_canchas": "cmr_canchas.j2",
     "mejora_web": "mejora_web.j2",
 }
 DEFAULT_TEMPLATE = "generico.j2"
