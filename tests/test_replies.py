@@ -179,3 +179,38 @@ def test_stats_count_leads_that_replied_without_registered_contact(session, work
     register_reply(session, lead, "Me interesa", ReplyClassifier())
     stats = reply_stats(session, workspace.id)
     assert stats.contacted == 1 and stats.positive == 1
+
+
+def test_gemini_reply_classifier_parses_json():
+    import json as _json
+
+    import httpx
+
+    from cmr_leads.replies.ai_classifier import GeminiReplyClassifier
+    from cmr_leads.settings import Settings
+
+    seen = {}
+
+    def handler(request):
+        seen["body"] = _json.loads(request.content)
+        answer = {
+            "category": "pide_info",
+            "objections": ["precio", "inventada"],
+            "summary": "Pregunta cuánto sale",
+            "suggested_action": "Mandarle precios",
+        }
+        return httpx.Response(
+            200, json={"candidates": [{"content": {"parts": [{"text": _json.dumps(answer)}]}}]}
+        )
+
+    settings = Settings(_env_file=None, gemini_api_key="k")
+    classifier = GeminiReplyClassifier(
+        settings, httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    result = classifier.classify("¿cuánto sale?", {"Negocio": "Peluquería Sofi"})
+    assert result.category == "pide_info"
+    assert result.objections == ["precio"]
+    assert result.source == "ia"
+    config = seen["body"]["generationConfig"]
+    assert config["responseMimeType"] == "application/json"
+    assert "Peluquería Sofi" in seen["body"]["contents"][0]["parts"][0]["text"]

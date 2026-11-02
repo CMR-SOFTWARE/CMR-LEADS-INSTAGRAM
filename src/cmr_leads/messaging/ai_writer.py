@@ -111,16 +111,20 @@ def _clean(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def write_message(lead: Lead, settings: Settings, http: httpx.Client | None = None) -> str:
+def generate(
+    settings: Settings,
+    system: str,
+    user: str,
+    generation_config: dict,
+    http: httpx.Client | None = None,
+) -> str:
+    """Llama a Gemini y devuelve el texto. Si un modelo está saturado, prueba con el siguiente."""
     if not settings.gemini_api_key:
         raise AiWriterError("Falta GEMINI_API_KEY en el archivo .env")
-    system = SYSTEM_PROMPT.format(
-        company=settings.company_name, city=settings.company_city, catalog=load_catalog(settings)
-    )
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": build_lead_facts(lead)}]}],
-        "generationConfig": {"temperature": 0.9},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": generation_config,
     }
     client = http or httpx.Client(timeout=60)
     models = dict.fromkeys([settings.gemini_model, *FALLBACK_MODELS])
@@ -144,4 +148,12 @@ def write_message(lead: Lead, settings: Settings, http: httpx.Client | None = No
     text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
     if not text.strip():
         raise AiWriterError("Gemini no devolvió texto")
+    return text
+
+
+def write_message(lead: Lead, settings: Settings, http: httpx.Client | None = None) -> str:
+    system = SYSTEM_PROMPT.format(
+        company=settings.company_name, city=settings.company_city, catalog=load_catalog(settings)
+    )
+    text = generate(settings, system, build_lead_facts(lead), {"temperature": 0.9}, http)
     return _clean(text)

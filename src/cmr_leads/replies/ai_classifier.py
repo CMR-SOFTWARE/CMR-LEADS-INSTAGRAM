@@ -1,8 +1,6 @@
-"""Clasificación de respuestas con Claude (opcional, requiere ANTHROPIC_API_KEY)."""
+"""Clasificación de respuestas con IA: Gemini (GEMINI_API_KEY) o Claude (ANTHROPIC_API_KEY)."""
 
 import json
-
-import anthropic
 
 from cmr_leads.replies.classifier import CATEGORIES, OBJECTIONS, ReplyAnalysis
 
@@ -38,13 +36,57 @@ SCHEMA = {
 }
 
 
+def _user_prompt(text: str, context: dict) -> str:
+    context_lines = "\n".join(f"{k}: {v}" for k, v in context.items() if v)
+    return (
+        f"Datos del negocio:\n{context_lines or '(sin datos)'}\n\n"
+        f"Respuesta recibida:\n<respuesta>\n{text}\n</respuesta>"
+    )
+
+
+def _to_analysis(data: dict) -> ReplyAnalysis | None:
+    if data.get("category") not in CATEGORIES:
+        return None
+    return ReplyAnalysis(
+        category=data["category"],
+        objections=[o for o in data.get("objections", []) if o in OBJECTIONS],
+        summary=data.get("summary", "")[:300],
+        suggested_action=data.get("suggested_action", "")[:300],
+        source="ia",
+    )
+
+
+class GeminiReplyClassifier:
+    def __init__(self, settings, http=None) -> None:
+        self.settings = settings
+        self.http = http
+
+    def classify(self, text: str, context: dict) -> ReplyAnalysis | None:
+        from cmr_leads.messaging.ai_writer import generate
+
+        schema = {k: v for k, v in SCHEMA.items() if k != "additionalProperties"}
+        raw = generate(
+            self.settings,
+            SYSTEM_PROMPT,
+            _user_prompt(text, context),
+            {
+                "temperature": 0,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": schema,
+            },
+            self.http,
+        )
+        return _to_analysis(json.loads(raw))
+
+
 class ClaudeReplyClassifier:
     def __init__(self, api_key: str, model: str = "claude-opus-5-5", client=None) -> None:
+        import anthropic
+
         self.model = model
         self.client = client or anthropic.Anthropic(api_key=api_key, timeout=30.0)
 
     def classify(self, text: str, context: dict) -> ReplyAnalysis | None:
-        context_lines = "\n".join(f"{k}: {v}" for k, v in context.items() if v)
         response = self.client.beta.messages.create(
             model=self.model,
             max_tokens=1024,
@@ -52,24 +94,11 @@ class ClaudeReplyClassifier:
             fallbacks="default",
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
             system=SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Datos del negocio:\n{context_lines or '(sin datos)'}\n\n"
-                    f"Respuesta recibida:\n<respuesta>\n{text}\n</respuesta>",
-                }
-            ],
+            messages=[{"role": "user", "content": _user_prompt(text, context)}],
         )
         if response.stop_reason == "refusal":
             return None
         raw = next((b.text for b in response.content if b.type == "text"), None)
         if not raw:
             return None
-        data = json.loads(raw)
-        return ReplyAnalysis(
-            category=data["category"],
-            objections=[o for o in data.get("objections", []) if o in OBJECTIONS],
-            summary=data.get("summary", "")[:300],
-            suggested_action=data.get("suggested_action", "")[:300],
-            source="ia",
-        )
+        return _to_analysis(json.loads(raw))

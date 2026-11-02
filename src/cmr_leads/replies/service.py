@@ -253,7 +253,12 @@ def reply_stats(session: Session, workspace_id: int) -> ReplyStats:
 
 
 def build_classifier(settings) -> ReplyClassifier:
-    if settings.reply_ai_configured:
+    # Gemini primero (es la key del proyecto); Claude como alternativa; si no hay ninguna, reglas.
+    if settings.ai_configured:
+        from cmr_leads.replies.ai_classifier import GeminiReplyClassifier
+
+        return ReplyClassifier(GeminiReplyClassifier(settings))
+    if settings.anthropic_api_key:
         from cmr_leads.replies.ai_classifier import ClaudeReplyClassifier
 
         return ReplyClassifier(ClaudeReplyClassifier(settings.anthropic_api_key, settings.ai_model))

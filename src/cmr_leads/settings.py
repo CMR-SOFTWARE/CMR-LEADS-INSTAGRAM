@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.8-flash"
 
-    # IA (opcional) para clasificar respuestas. Sin clave se usan reglas.
+    # Alternativa a Gemini para clasificar respuestas (opcional). Sin ninguna, se usan reglas.
     anthropic_api_key: str | None = None
     ai_model: str = "claude-opus-5-5"
 
@@ -46,8 +46,8 @@ class Settings(BaseSettings):
 
     @property
     def reply_ai_configured(self) -> bool:
-        """IA para clasificar respuestas de leads (Claude)."""
-        return bool(self.anthropic_api_key)
+        """IA para clasificar respuestas de leads (Gemini o, si no, Claude)."""
+        return bool(self.gemini_api_key or self.anthropic_api_key)
 
     @property
     def google_places_configured(self) -> bool:
