@@ -156,3 +156,19 @@ def normalize_email(value: str | None) -> str | None:
         return None
     value = value.strip().lower()
     return value if re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", value) else None
+
+
+WHATSAPP_CHAT_LINK_RE = re.compile(
+    r"https?://(?:wa\.me/message/|api\.whatsapp\.com/message/|wa\.link/)[A-Za-z0-9]+", re.I
+)
+
+
+def whatsapp_chat_link(*texts: str | None) -> str | None:
+    """Link corto de WhatsApp (wa.me/message/…, wa.link/…): abre el chat aunque no se vea el número.
+
+    No se lee automáticamente para sacar el número: el robots.txt de WhatsApp lo prohíbe.
+    """
+    for text in texts:
+        if text and (match := WHATSAPP_CHAT_LINK_RE.search(text)):
+            return match.group(0)
+    return None

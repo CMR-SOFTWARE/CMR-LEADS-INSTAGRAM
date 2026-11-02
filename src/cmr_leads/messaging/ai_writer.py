@@ -82,7 +82,7 @@ def describe_website(lead: Lead) -> str:
     return f"Tiene web ({lead.website_domain}): {detail}."
 
 
-def build_lead_facts(lead: Lead) -> str:
+def build_lead_facts(lead: Lead, include_offer: bool = True) -> str:
     facts = [
         f"Negocio: {lead.display_name or '@' + (lead.instagram_username or '?')}",
         f"Rubro: {lead.category or lead.business_type or 'desconocido'}",
@@ -94,7 +94,10 @@ def build_lead_facts(lead: Lead) -> str:
         facts.append(f"Instagram: @{lead.instagram_username}{followers}")
     if lead.bio:
         facts.append(f"Bio: {lead.bio[:300]}")
-    if service := SERVICES.get(lead.recommended_service or ""):
+    ai_offer = (lead.raw_data or {}).get("ai_offer") if include_offer else None
+    if ai_offer:
+        facts.append(f"Qué ofrecerle (ya analizado): {ai_offer['offer']}. {ai_offer['pitch']}")
+    elif service := SERVICES.get(lead.recommended_service or ""):
         facts.append(f"Lo que más le serviría (según nuestro análisis): {service}")
     return "\n".join(facts)
 
@@ -157,3 +160,72 @@ def write_message(lead: Lead, settings: Settings, http: httpx.Client | None = No
     )
     text = generate(settings, system, build_lead_facts(lead), {"temperature": 0.9}, http)
     return _clean(text)
+
+
+OFFER_PROMPT = """\
+Sos el vendedor de {company} ({city}). Analizás un negocio local y decidís qué ofrecerle para \
+que sea lo más probable que nos contrate. Usá SOLO lo que vendemos:
+<catalogo>
+{catalog}
+</catalogo>
+
+Reglas:
+- Elegí la oferta que más le resuelva un problema real según su rubro y la ficha. Puede ser un \
+plan tal cual, un producto (CMR Nexo, CMR Canchas) o una combinación armada a medida \
+(por ejemplo "Plan Web con catálogo de anteojos"), siempre dentro del catálogo.
+- Preferí lo más simple y barato que le sirva: es más fácil que acepten algo chico y después crecer.
+- "probability" es la chance (0-100) de que contrate si le escribimos, según qué tan clara es su \
+necesidad, si ya tiene web o sistema, si es un negocio activo y si hay forma de contactarlo.
+- "pitch" es el argumento principal en una frase, en español rioplatense, sin precios.
+- No inventes datos del negocio."""
+
+OFFER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "product": {"type": "string", "enum": list(SERVICES)},
+        "offer": {"type": "string"},
+        "pitch": {"type": "string"},
+        "probability": {"type": "integer"},
+        "reason": {"type": "string"},
+    },
+    "required": ["product", "offer", "pitch", "probability", "reason"],
+}
+
+
+def recommend_offer(lead: Lead, settings: Settings, http: httpx.Client | None = None) -> dict:
+    """Pide a Gemini la oferta con más chances de venta. Devuelve el dict validado."""
+    import json
+
+    system = OFFER_PROMPT.format(
+        company=settings.company_name, city=settings.company_city, catalog=load_catalog(settings)
+    )
+    raw = generate(
+        settings,
+        system,
+        build_lead_facts(lead, include_offer=False),
+        {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": OFFER_SCHEMA,
+        },
+        http,
+    )
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        raise AiWriterError("Gemini devolvió una respuesta inválida") from exc
+    if data.get("product") not in SERVICES:
+        data["product"] = lead.recommended_service
+    data["probability"] = max(0, min(100, int(data.get("probability") or 0)))
+    for key in ("offer", "pitch", "reason"):
+        data[key] = str(data.get(key) or "")[:300]
+    return data
+
+
+def apply_offer(lead: Lead, offer: dict) -> None:
+    """Guarda la recomendación de la IA en el lead (no pisa la del algoritmo de reglas)."""
+    lead.ai_score = offer["probability"]
+    if offer.get("product"):
+        lead.recommended_service = offer["product"]
+    lead.ai_summary = f"{offer['offer']} — {offer['reason']}"
+    lead.raw_data = {**(lead.raw_data or {}), "ai_offer": offer}

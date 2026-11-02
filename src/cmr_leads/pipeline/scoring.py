@@ -71,6 +71,7 @@ class ScoringConfig(BaseModel):
     appointment_business_types: list[str] = Field(default_factory=list)
     nexo_business_types: list[str] = Field(default_factory=list)
     canchas_keywords: list[str] = Field(default_factory=list)
+    store_business_types: list[str] = Field(default_factory=list)
     local: LocalRules = Field(default_factory=LocalRules)
     need: NeedRules = Field(default_factory=NeedRules)
     reach: ReachRules = Field(default_factory=ReachRules)
@@ -318,17 +319,22 @@ def score(data: ScoringInput, config: ScoringConfig) -> ScoreResult:
         or _contains_any(text, fit_rules.business_keywords)
     )
 
+    # Qué plan ofrecer (ver config/catalogo.md).
+    web_needs_fix = any(
+        i["dimension"] == "need" and "sitio" in i["reason"] for i in result.breakdown
+    )
+    sells_online = bool(data.has_website and (data.website_signals or {}).get("ecommerce"))
     if _contains_any(text_with_username, config.canchas_keywords):
         result.recommended_service = "cmr_canchas"
     elif business_type in config.nexo_business_types:
         result.recommended_service = "cmr_nexo"
     elif business_type in config.appointment_business_types or appointments:
         result.recommended_service = "sistema_turnos"
-    elif sells_by_dm and (not data.has_website):
+    elif (business_type in config.store_business_types or sells_by_dm) and not sells_online:
         result.recommended_service = "tienda_online"
     elif not data.has_website:
         result.recommended_service = "pagina_web"
-    elif any(i["dimension"] == "need" and "sitio" in i["reason"] for i in result.breakdown):
+    elif web_needs_fix:
         result.recommended_service = "mejora_web"
     else:
         result.recommended_service = "sistema_a_medida"
@@ -358,7 +364,9 @@ def apply_score(lead: Lead, config: ScoringConfig) -> ScoreResult:
     lead.is_business = result.is_business
     lead.is_local = result.is_local
     lead.business_type = result.business_type
-    lead.recommended_service = result.recommended_service
+    # Si la IA ya eligió el plan con más chances de venta, manda sobre las reglas.
+    ai_offer = (lead.raw_data or {}).get("ai_offer") or {}
+    lead.recommended_service = ai_offer.get("product") or result.recommended_service
     lead.score_breakdown = result.breakdown
     lead.scoring_version = config.version
     return result

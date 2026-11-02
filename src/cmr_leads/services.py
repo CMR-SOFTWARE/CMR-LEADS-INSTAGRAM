@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from cmr_leads.db.models import Interaction, Lead, LeadSource, StatusChange, utcnow
@@ -49,7 +49,9 @@ def leads_query(
         query = query.where(Lead.priority == priority)
     if source:
         query = query.where(Lead.sources.any(LeadSource.source == source))
-    return query.order_by(Lead.business_score.desc().nulls_last(), Lead.id)
+    # Primero la probabilidad de venta que estimó la IA; si no hay, el puntaje del algoritmo.
+    ranking = func.coalesce(Lead.ai_score, Lead.business_score)
+    return query.order_by(ranking.desc().nulls_last(), Lead.id)
 
 
 def set_status(session: Session, lead: Lead, status: LeadStatus, note: str | None = None) -> None:

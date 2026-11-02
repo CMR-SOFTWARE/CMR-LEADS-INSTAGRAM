@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # Google regala 1.000 consultas/mes de Text Search Enterprise; se deja margen para no pagar.
     google_places_max_requests_per_month: int = 900
     search_area: str = "San Nicolás de los Arroyos, Buenos Aires"
+    # Al abrir la app busca sola unos rubros/localidades nuevos por día (1 consulta cada uno).
+    auto_search_enabled: bool = True
+    auto_search_per_day: int = 3
+    # Cuántos leads nuevos analiza la IA por día para elegir qué ofrecerles.
+    auto_offer_per_day: int = 15
+    auto_search_state: Path = Path("data/auto_search.json")
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.8-flash"

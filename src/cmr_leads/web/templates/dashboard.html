@@ -24,9 +24,26 @@
   <div class="kpi"><div class="value">{{ stats.total }}</div><div class="label">Total en la base</div></div>
 </div>
 
+{% if auto_enabled %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>🤖 Búsqueda automática</h2><a href="/leads?source=google_places" class="small">Ver leads de Google</a></div>
+  {% if auto %}
+  <p style="margin:0">
+    {{ auto.date }}: busqué <strong>{{ auto.searches|join(", ") or "nada nuevo" }}</strong>
+    → <strong>{{ auto.created }} negocios nuevos</strong>{% if auto.existing %} ({{ auto.existing }} ya los tenías){% endif %}.
+    {% if auto.created %}Ya les completé los datos y los puntué: los mejores aparecen abajo.{% endif %}
+  </p>
+  {% if auto.stopped_reason %}<p class="muted small" style="margin:6px 0 0">Se detuvo: {{ auto.stopped_reason }}</p>{% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">Cada vez que abrís la app busco unos rubros y localidades nuevos (máximo 3 consultas por día). Recargá en un minuto para ver el resultado.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="grid grid-2">
   <div class="card">
-    <div class="card-head"><h2>🔥 Mejores leads para revisar</h2><a href="/leads?status=new" class="small">Ver todos</a></div>
+    <div class="card-head"><h2>🔥 Mejores leads para revisar</h2>
+      {% if ai_configured %}<form method="post" action="/acciones/analizar"><button class="btn btn-sm" title="La IA elige qué ofrecerle a los 10 mejores leads sin analizar">🎯 Analizar 10 con IA</button></form>{% endif %}<a href="/leads?status=new" class="small">Ver todos</a></div>
     {% if top %}
     <div class="lead-list">
       {% for lead in top %}
@@ -34,7 +51,7 @@
         {{ avatar(lead) }}
         <div style="flex:1;min-width:0">
           <span class="lead-name">{{ lead.label }}</span>
-          <span class="lead-sub">{{ SERVICE_LABELS.get(lead.recommended_service, "") }}{% if lead.city %} · {{ lead.city }}{% endif %}</span>
+          <span class="lead-sub">{% set o = (lead.raw_data or {}).get("ai_offer") %}{% if o %}🎯 {{ o.offer }} · {{ o.probability }}%{% else %}{{ SERVICE_LABELS.get(lead.recommended_service, "") }}{% endif %}{% if lead.city %} · {{ lead.city }}{% endif %}</span>
         </div>
         {{ score(lead, "sm") }}
       </a>

@@ -61,3 +61,13 @@ def test_urls_and_domains():
 
 def test_normalize_text_removes_accents():
     assert normalize_text("  Estética   SAN Nicolás ") == "estetica san nicolas"
+
+
+def test_whatsapp_chat_link_detects_short_links():
+    from cmr_leads.pipeline.normalize import whatsapp_chat_link
+
+    assert whatsapp_chat_link("https://wa.me/message/TU2R7RUDF3E2B1") == (
+        "https://wa.me/message/TU2R7RUDF3E2B1"
+    )
+    assert whatsapp_chat_link(None, "Escribinos https://wa.link/abc123") == "https://wa.link/abc123"
+    assert whatsapp_chat_link("https://estetica.com.ar") is None

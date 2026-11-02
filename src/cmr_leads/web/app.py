@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import zipfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +32,7 @@ from cmr_leads.pipeline.learning import (
     RULE_LABELS,
     analyze,
 )
+from cmr_leads.pipeline.normalize import whatsapp_chat_link
 from cmr_leads.pipeline.scoring import (
     apply_score,
     get_weight,
@@ -121,10 +122,10 @@ def _split_terms(value: str, commas: bool = True) -> list[str]:
 SERVICE_LABELS = {
     "cmr_nexo": "CMR Nexo",
     "cmr_canchas": "CMR Canchas",
-    "pagina_web": "Página web",
-    "tienda_online": "Tienda online",
-    "sistema_turnos": "Sistema de turnos",
-    "mejora_web": "Mejorar su web",
+    "pagina_web": "Plan Web",
+    "tienda_online": "Plan Gestión · tienda",
+    "sistema_turnos": "Plan Gestión · turnos",
+    "mejora_web": "Renovar web",
     "sistema_a_medida": "Sistema a medida",
 }
 CHANNEL_LABELS = {
@@ -168,23 +169,25 @@ def _search_links(lead: Lead) -> dict[str, str]:
     }
 
 
+def _whatsapp_url(lead: Lead) -> str | None:
+    """wa.me con el número si lo tenemos; si no, el link corto que publicó el negocio."""
+    if lead.whatsapp_e164:
+        return f"https://wa.me/{lead.whatsapp_e164.lstrip('+')}"
+    return whatsapp_chat_link(lead.website, lead.bio)
+
+
 def _profile_links(lead: Lead) -> list[dict[str, str]]:
     links = []
     if lead.instagram_url:
         links.append(
             {"kind": "instagram", "label": f"@{lead.instagram_username}", "url": lead.instagram_url}
         )
-    if lead.whatsapp_e164:
-        links.append(
-            {
-                "kind": "whatsapp",
-                "label": "WhatsApp",
-                "url": f"https://wa.me/{lead.whatsapp_e164.lstrip('+')}",
-            }
-        )
+    chat_link = _whatsapp_url(lead)
+    if chat_link:
+        links.append({"kind": "whatsapp", "label": "WhatsApp", "url": chat_link})
     if lead.phone_e164:
         links.append({"kind": "phone", "label": lead.phone_e164, "url": f"tel:{lead.phone_e164}"})
-    if lead.website:
+    if lead.website and lead.website != chat_link:
         links.append(
             {"kind": "web", "label": lead.website_domain or "Sitio web", "url": lead.website}
         )
@@ -195,7 +198,16 @@ def _profile_links(lead: Lead) -> list[dict[str, str]]:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    app = FastAPI(title="CMR Lead Finder", docs_url=None, redoc_url=None)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        if settings.auto_search_enabled and settings.google_places_configured:
+            import threading
+
+            threading.Thread(target=app.state.auto_search, name="auto-search", daemon=True).start()
+        yield
+
+    app = FastAPI(title="CMR Lead Finder", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.settings = settings
     app.state.session_factory = make_session_factory(make_engine(settings.database_url))
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
@@ -295,6 +307,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 or 0,
             }
             top = list(session.scalars(leads_query(ws.id, status=LeadStatus.NEW).limit(6)))
+            from cmr_leads.pipeline.auto_search import load_state
+
+            auto = load_state(settings.auto_search_state).get("last_result")
             follow_ups = follow_ups_due(session, ws.id)
             sources = source_stats(session, ws.id)
             return render(
@@ -305,6 +320,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 follow_ups=follow_ups,
                 sources=sources,
                 instagram_configured=settings.instagram_configured,
+                auto=auto,
+                ai_configured=settings.ai_configured,
+                auto_enabled=settings.auto_search_enabled and settings.google_places_configured,
             )
 
     # ---------------- Leads ----------------
@@ -424,6 +442,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 lead=lead,
                 draft=draft,
                 ai_draft=bool((lead.raw_data or {}).get("ai_message")),
+                wa_chat_link=None if lead.whatsapp_e164 else _whatsapp_url(lead),
                 ai_configured=settings.ai_configured,
                 active="leads",
                 maxes=config.dimension_max,
@@ -608,7 +627,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "priority": lead.priority or "",
                         "service": SERVICE_LABELS.get(lead.recommended_service or "", ""),
                         "status": STATUS_LABELS.get(lead.status, lead.status),
-                        "whatsapp": (lead.whatsapp_e164 or "").lstrip("+"),
+                        "whatsapp": _whatsapp_url(lead) or "",
                         "instagram": lead.instagram_username or "",
                         "contacted": f"{lead.contacted_at:%d/%m/%Y}" if lead.contacted_at else "",
                     }
@@ -984,8 +1003,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             msg += f" · se detuvo: {stopped}"
         return back("/leads?source=google_places", msg)
 
-    @app.post("/acciones/enriquecer")
-    def action_enrich(limit: int = Form(20)):
+    def enrich_and_score(session: Session, ws: Workspace, limit: int):
         from cmr_leads.enrichment.instagram_discovery import BusinessDiscoveryClient
         from cmr_leads.enrichment.website import fetch_website_signals
         from cmr_leads.pipeline.enrich import enrich_pending
@@ -1003,20 +1021,114 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             def fetcher(url: str):
                 return fetch_website_signals(url, timeout=settings.website_timeout_seconds)
 
-        with db() as (session, ws):
-            summary = enrich_pending(
-                session,
-                ws,
-                lookup,
-                settings.meta_max_lookups_per_day,
-                settings.default_country,
-                limit=min(max(limit, 1), 100),
-                website_fetcher=fetcher,
+        summary = enrich_pending(
+            session,
+            ws,
+            lookup,
+            settings.meta_max_lookups_per_day,
+            settings.default_country,
+            limit=limit,
+            website_fetcher=fetcher,
+        )
+        config = scoring_config()
+        for lead_id in dict.fromkeys(summary.lead_ids):
+            if (lead := session.get(Lead, lead_id)) is not None:
+                apply_score(lead, config)
+        return summary
+
+    def auto_search() -> None:
+        """Al abrir la app: busca unos pocos rubros/localidades nuevos y completa sus datos."""
+        from datetime import date
+
+        from cmr_leads.pipeline.auto_search import run_auto_search
+        from cmr_leads.sources.google_places import GooglePlacesClient
+
+        try:
+            with db() as (session, ws):
+                result = run_auto_search(
+                    session,
+                    ws,
+                    GooglePlacesClient(settings.google_places_api_key),
+                    settings.auto_search_state,
+                    date.today(),
+                    settings.auto_search_per_day,
+                    settings.search_area,
+                    settings.google_places_max_requests_per_day,
+                    settings.google_places_max_requests_per_month,
+                    settings.default_country,
+                    scoring_config(),
+                )
+                if result.created:
+                    session.commit()
+                    enrich_and_score(session, ws, limit=min(result.created, 60))
+                    session.commit()
+                    analyze_offers(session, ws, limit=settings.auto_offer_per_day)
+        except Exception:  # noqa: BLE001 - nunca debe impedir que la app abra
+            import logging
+
+            logging.getLogger(__name__).exception("Falló la búsqueda automática")
+
+    app.state.auto_search = auto_search
+
+    def analyze_offers(session: Session, ws: Workspace, limit: int, pause: float = 4.0) -> int:
+        """La IA elige qué ofrecer a los mejores leads que todavía no se analizaron."""
+        import time
+
+        from cmr_leads.messaging.ai_writer import AiWriterError, apply_offer, recommend_offer
+
+        if not settings.ai_configured:
+            return 0
+        candidates = session.scalars(
+            leads_query(ws.id)
+            .where(
+                Lead.ai_score.is_(None),
+                Lead.status.in_([LeadStatus.NEW, LeadStatus.APPROVED]),
             )
-            config = scoring_config()
-            for lead_id in dict.fromkeys(summary.lead_ids):
-                if (lead := session.get(Lead, lead_id)) is not None:
-                    apply_score(lead, config)
+            .limit(limit)
+        ).all()
+        done = 0
+        for i, lead in enumerate(candidates):
+            if i:
+                time.sleep(pause)  # el cupo gratis de Gemini limita las consultas por minuto
+            try:
+                apply_offer(lead, recommend_offer(lead, settings))
+            except AiWriterError:
+                break
+            session.commit()
+            done += 1
+        return done
+
+    app.state.analyze_offers = analyze_offers
+
+    @app.post("/acciones/analizar")
+    def action_analyze(limit: int = Form(10)):
+        if not settings.ai_configured:
+            return back("/", "Falta configurar GEMINI_API_KEY en el archivo .env")
+        with db() as (session, ws):
+            done = analyze_offers(session, ws, min(max(limit, 1), 30))
+        return back("/leads", f"La IA analizó {done} leads: están ordenados por chance de venta")
+
+    @app.post("/leads/{lead_id}/analizar")
+    def lead_analyze(lead_id: int):
+        from cmr_leads.messaging.ai_writer import AiWriterError, apply_offer, recommend_offer
+
+        if not settings.ai_configured:
+            return back(f"/leads/{lead_id}", "Falta configurar GEMINI_API_KEY en el archivo .env")
+        with db() as (session, ws):
+            try:
+                lead = get_lead(session, ws.id, lead_id)
+            except LeadError:
+                return back("/leads", f"No existe el lead #{lead_id}")
+            try:
+                apply_offer(lead, recommend_offer(lead, settings))
+            except AiWriterError as exc:
+                return back(f"/leads/{lead_id}", str(exc))
+        return back(f"/leads/{lead_id}", "Listo: la IA eligió qué ofrecerle")
+
+    @app.post("/acciones/enriquecer")
+    def action_enrich(limit: int = Form(20)):
+        with db() as (session, ws):
+            summary = enrich_and_score(session, ws, min(max(limit, 1), 100))
         parts = [
             f"{summary.found} encontrados",
             f"{summary.not_found} no comerciales",

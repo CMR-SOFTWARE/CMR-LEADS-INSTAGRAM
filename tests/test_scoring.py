@@ -74,7 +74,7 @@ def test_manual_username_exclusion(scoring_config):
 
 
 def test_link_in_bio_only_counts_as_need(scoring_config):
-    result = score(_input(display_name="Ropa Mía", link_in_bio_only=True), scoring_config)
+    result = score(_input(display_name="Estudio Mía", link_in_bio_only=True), scoring_config)
     assert any("link en bio" in item["reason"] for item in result.breakdown)
     assert result.recommended_service == "pagina_web"
 
@@ -110,3 +110,23 @@ def test_recommends_own_products_by_rubro(scoring_config):
     assert canchas.recommended_service == "cmr_canchas"
     assert nexo.recommended_service == "cmr_nexo"
     assert gym.recommended_service == "sistema_turnos"
+
+
+def test_shops_get_web_plans_not_nexo(scoring_config):
+    optica = score(_input(display_name="Óptica Centro", category="Óptica"), scoring_config)
+    ropa = score(_input(display_name="Tienda Lola", category="Tienda de ropa"), scoring_config)
+    assert optica.recommended_service == "pagina_web"
+    assert ropa.recommended_service == "tienda_online"
+
+
+def test_ai_offer_overrides_rule_based_plan(scoring_config):
+    from cmr_leads.db.models import Lead
+    from cmr_leads.pipeline.scoring import apply_score
+
+    lead = Lead(
+        display_name="Óptica Centro",
+        category="Óptica",
+        raw_data={"ai_offer": {"product": "tienda_online"}},
+    )
+    apply_score(lead, scoring_config)
+    assert lead.recommended_service == "tienda_online"

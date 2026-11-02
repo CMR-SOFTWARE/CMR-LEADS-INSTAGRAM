@@ -250,7 +250,7 @@ def test_reply_flow_from_panel(client):
     )
     assert "1 respuesta" in _msg(response)
     stats = client.get("/respuestas").text
-    assert "Tasa de respuesta" in stats and "pagina_web" in stats or "Página web" in stats
+    assert "Tasa de respuesta" in stats and "pagina_web" in stats or "Plan Web" in stats
     outbound = [i for i in _lead(client, id=lead_id).interactions if i.direction == "outbound"]
     assert outbound[0].template == "pagina_web"
 

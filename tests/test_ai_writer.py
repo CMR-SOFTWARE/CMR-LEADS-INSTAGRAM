@@ -151,3 +151,29 @@ def test_catalog_is_sent_to_gemini(tmp_path):
     write_message(_gym(recommended_service="cmr_nexo"), _settings(catalog_path=catalog), client)
     assert "CMR Nexo: turnos online" in seen["body"]["systemInstruction"]["parts"][0]["text"]
     assert "CMR Nexo" in seen["body"]["contents"][0]["parts"][0]["text"]
+
+
+def test_recommend_offer_parses_and_applies(tmp_path):
+    from cmr_leads.messaging.ai_writer import apply_offer, recommend_offer
+
+    answer = {
+        "product": "pagina_web",
+        "offer": "Plan Web con catálogo de anteojos",
+        "pitch": "Que los encuentren en Google y les escriban por WhatsApp",
+        "probability": 140,
+        "reason": "No tiene web y vende productos",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["generationConfig"]["responseMimeType"] == "application/json"
+        text = json.dumps(answer)
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+    lead = _gym(raw_data={})
+    offer = recommend_offer(lead, _settings(), httpx.Client(transport=httpx.MockTransport(handler)))
+    assert offer["probability"] == 100
+    apply_offer(lead, offer)
+    assert lead.ai_score == 100
+    assert lead.raw_data["ai_offer"]["offer"] == "Plan Web con catálogo de anteojos"
+    assert "Plan Web con catálogo de anteojos" in build_lead_facts(lead)

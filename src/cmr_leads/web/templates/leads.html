@@ -53,7 +53,9 @@
     <div class="hide-md">{{ links(lead, compact=true) }}</div>
     {{ score(lead, "sm") }}
     <div class="hide-md chips">
-      {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">{{ SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
+      {% set offer = (lead.raw_data or {}).get("ai_offer") %}
+      {% if offer and not lead.excluded %}<span class="chip accent" title="{{ offer.pitch }}">🎯 {{ offer.offer|truncate(32, true, "…") }} · {{ offer.probability }}%</span>
+      {% elif lead.recommended_service and not lead.excluded %}<span class="chip accent">{{ SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
       {{ status_chip(lead) }}
       {% if lead.excluded %}<span class="chip red" title="{{ lead.exclusion_reason }}">Excluido</span>{% endif %}
     </div>

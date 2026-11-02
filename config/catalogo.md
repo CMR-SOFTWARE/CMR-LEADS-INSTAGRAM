@@ -87,6 +87,8 @@ Proyectos únicos: 50% de seña y 50% al entregar.
 - Canchas de fútbol, pádel o tenis, complejos deportivos → CMR Canchas.
 - Peluquerías, barberías, estéticas, masajes, psicólogos, kinesiólogos, consultorios → CMR Nexo.
 - Gimnasios y estudios con clases → Plan Gestión con turnos para las clases.
-- Comercios, ropa, gastronomía, dietéticas, ferreterías → Plan Gestión (catálogo, carrito y pedidos).
-- Profesionales o negocios sin web que no venden online → Plan Web.
+- Ropa, gastronomía y negocios que venden por mensaje → Plan Gestión (catálogo, carrito y pedidos).
+- Ópticas, ferreterías, librerías y comercios sin web → Plan Web (que los encuentren en Google y les
+  escriban por WhatsApp). Si ya venden mucho por mensaje, Plan Gestión.
+- Profesionales (abogados, contadores, inmobiliarias, talleres) sin web → Plan Web.
 - Negocios con una web vieja o que no anda en el celular → renovarla con el Plan Web.

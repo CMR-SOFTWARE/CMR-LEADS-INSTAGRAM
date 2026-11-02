@@ -44,7 +44,7 @@
     });
     const links = [
       `<a href="/leads/${p.id}">Ver ficha</a>`,
-      p.whatsapp ? `<a href="https://wa.me/${esc(p.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : "",
+      p.whatsapp ? `<a href="${esc(p.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : "",
       p.instagram ? `<a href="https://instagram.com/${esc(p.instagram)}" target="_blank" rel="noopener">Instagram</a>` : "",
     ].filter(Boolean).join(" · ");
     marker.bindPopup(`

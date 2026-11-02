@@ -193,3 +193,30 @@ def test_monthly_limit_stops_searches(session, workspace, scoring_config):
     )
     assert result.requests == 0
     assert "tope mensual" in result.stopped_reason
+
+
+def test_auto_search_plan_rotates_and_runs_once_a_day(session, workspace, scoring_config, tmp_path):
+    from datetime import date
+
+    from cmr_leads.pipeline.auto_search import plan_searches, run_auto_search, search_order
+
+    first = plan_searches({}, date(2026, 11, 2), 3)
+    assert first == search_order()[:3]
+    assert first[0] == ("peluquería", "San Nicolás de los Arroyos, Buenos Aires")
+    # Lo buscado hace más de 60 días vuelve a la cola cuando no queda nada nuevo.
+    done = {f"{q}|{a}": "2026-01-01" for q, a in search_order()}
+    assert len(plan_searches(done, date(2026, 11, 2), 2)) == 2
+
+    queries = []
+
+    class FakeClient:
+        def search_text(self, query, page_token=None):
+            queries.append(query)
+            return [{"id": f"auto{len(queries)}", "displayName": {"text": "X"}}], None
+
+    state = tmp_path / "auto.json"
+    args = (session, workspace, FakeClient(), state, date(2026, 11, 2), 2, "Zona", 100, 900, "AR")
+    result = run_auto_search(*args, scoring_config)
+    assert result.created == 2 and len(queries) == 2
+    again = run_auto_search(*args, scoring_config)
+    assert not again.ran and len(queries) == 2  # una sola vez por día

@@ -16,7 +16,7 @@
         {% set g = lead|google_data %}
         {% if g.rating %}<span class="chip">⭐ {{ g.rating }} ({{ g.reviews or 0 }} reseñas)</span>{% endif %}
         {% if lead.followers %}<span class="chip">{{ "{:,}".format(lead.followers).replace(",", ".") }} seguidores</span>{% endif %}
-        {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">Ofrecer: {{ SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
+        {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">Ofrecer: {{ (lead.raw_data or {}).get("ai_offer", {}).get("offer") or SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
         {% if lead.enrichment_state == "pending" %}<span class="chip amber">Sin datos de Instagram aún</span>{% endif %}
       </div>
     </div>
@@ -25,6 +25,20 @@
   {% if lead.excluded %}<div class="notice" style="margin:16px 0 0">Excluido: {{ lead.exclusion_reason }}</div>{% endif %}
   <div style="margin-top:16px">{{ links(lead) }}</div>
   {% if lead.bio %}<p class="bio">{{ lead.bio }}</p>{% endif %}
+</div>
+
+{% set offer = (lead.raw_data or {}).get("ai_offer") %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>🎯 Qué ofrecerle</h2>
+    <form method="post" action="/leads/{{ lead.id }}/analizar"><button class="btn btn-sm">{{ "Volver a analizar" if offer else "Analizar con IA" }}</button></form>
+  </div>
+  {% if offer %}
+  <p style="margin:0 0 6px"><strong>{{ offer.offer }}</strong> <span class="chip {{ 'green' if offer.probability >= 60 else ('amber' if offer.probability >= 35 else '') }}">{{ offer.probability }}% de chance</span></p>
+  <p style="margin:0 0 6px">💬 {{ offer.pitch }}</p>
+  <p class="muted small" style="margin:0">Por qué: {{ offer.reason }}</p>
+  {% else %}
+  <p class="muted" style="margin:0">Según las reglas: <strong>{{ SERVICE_LABELS.get(lead.recommended_service, "—") }}</strong>. Tocá "Analizar con IA" para que arme la oferta con más chances de venta para este negocio.</p>
+  {% endif %}
 </div>
 
 <div class="detail-grid" style="margin-top:16px">
@@ -38,6 +52,8 @@
         <div class="actions" style="margin-top:12px">
           {% if lead.whatsapp_e164 %}
           <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
+          {% elif wa_chat_link %}
+          <a class="btn btn-whatsapp" data-dm href="{{ wa_chat_link }}" target="_blank" rel="noopener" title="Abre el chat del negocio; el mensaje queda copiado para pegarlo">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
           {% endif %}
           {% if lead.instagram_username %}
           <a class="btn btn-instagram" data-dm href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ icon("instagram") }} Copiar y abrir DM</a>

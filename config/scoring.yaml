@@ -91,7 +91,7 @@ fit:
 business_types:
   gastronomia: [restaurante, resto, restobar, bar, cafeteria, cafe, pizzeria, pizzas, hamburgueseria, hamburguesas, burger, empanadas, rotiseria, panaderia, heladeria, parrilla, sushi, pasteleria, comidas, viandas]
   estetica: [estetica, peluqueria, barberia, nails, manicura, esmaltado, spa, cosmetologia, depilacion, lashes, pestanas, cejas, maquillaje]
-  salud: [consultorio, odontologia, odontologo, odontologa, dentista, kinesiologia, kinesiologo, nutricionista, psicologa, psicologo, medico, medica, clinica, veterinaria, fonoaudiologa, optica, podologia]
+  salud: [consultorio, odontologia, odontologo, odontologa, dentista, kinesiologia, kinesiologo, nutricionista, psicologa, psicologo, medico, medica, clinica, veterinaria, fonoaudiologa, podologia]
   deportes: [gimnasio, gym, crossfit, pilates, yoga, cancha, canchas, padel, futbol 5, club, entrenamiento, funcional]
   indumentaria: [indumentaria, ropa, moda, boutique, calzado, zapateria, lenceria, accesorios]
   inmobiliaria: [inmobiliaria, propiedades, alquileres, bienes raices, desarrollos inmobiliarios]
@@ -99,12 +99,14 @@ business_types:
   profesional: [abogado, abogada, estudio juridico, contador, contadora, estudio contable, arquitecto, arquitecta, arquitectura, escribania, ingenieria, seguros]
   educacion: [instituto, academia, clases, cursos, idiomas, apoyo escolar, capacitaciones]
   eventos: [eventos, salon de fiestas, catering, fotografia, cotillon, ambientacion]
-  comercio: [almacen, kiosco, ferreteria, libreria, jugueteria, regaleria, muebleria, deco, decoracion, dietetica, vinoteca, distribuidora, mayorista, minorista, mercado, verduleria, carniceria, farmacia, perfumeria]
+  comercio: [almacen, kiosco, ferreteria, libreria, jugueteria, regaleria, muebleria, deco, decoracion, dietetica, vinoteca, distribuidora, mayorista, minorista, mercado, verduleria, carniceria, farmacia, perfumeria, optica, opticas, anteojos]
 
 # Rubros que suelen trabajar con turnos/reservas -> candidato a sistema de turnos
 appointment_business_types: [estetica, salud, deportes]
 # Productos propios: CMR Nexo (turnos por profesional) y CMR Canchas (reservas de canchas)
 nexo_business_types: [estetica, salud]
+# Venden productos: tienda online con el Plan Gestión (catálogo, carrito, pedidos)
+store_business_types: [indumentaria, gastronomia]
 canchas_keywords: [cancha, canchas, padel, futbol 5, futbol 7, futbol, tenis, complejo deportivo, fulbito]
 
 local:
