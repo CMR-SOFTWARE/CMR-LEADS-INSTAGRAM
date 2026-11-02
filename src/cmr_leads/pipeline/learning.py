@@ -60,9 +60,18 @@ FEEDBACK_REASONS = {
 
 
 def lead_label(lead: Lead) -> int | None:
-    """1 = buen lead, -1 = mal lead, None = sin revisar."""
+    """1 = buen lead, -1 = mal lead, None = sin revisar.
+
+    Prioridad: feedback explícito > lo que respondió el lead > estado."""
+    from cmr_leads.replies.classifier import NEGATIVE, POSITIVE
+
     if lead.feedback in (1, -1):
         return lead.feedback
+    outcomes = {i.outcome for i in lead.interactions if i.direction == "inbound"}
+    if outcomes & POSITIVE:
+        return 1
+    if outcomes & NEGATIVE:
+        return -1
     if lead.status in POSITIVE_STATUSES:
         return 1
     if lead.status in NEGATIVE_STATUSES:

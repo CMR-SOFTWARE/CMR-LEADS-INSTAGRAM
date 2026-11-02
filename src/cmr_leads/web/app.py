@@ -40,6 +40,8 @@ from cmr_leads.pipeline.scoring import (
     read_overrides,
     save_overrides,
 )
+from cmr_leads.replies.classifier import CATEGORIES as REPLY_CATEGORIES
+from cmr_leads.replies.classifier import OBJECTIONS
 from cmr_leads.services import (
     CONTACTABLE_STATUSES,
     LeadError,
@@ -77,6 +79,7 @@ SOURCE_LABELS = {
     SourceType.MANUAL: "Carga manual",
     SourceType.CSV_IMPORT: "CSV",
     SourceType.GOOGLE_PLACES: "Google Maps",
+    SourceType.INSTAGRAM_DM: "Instagram (te escribieron)",
 }
 # Cada búsqueda son 1 a 3 requests pagas a Google: se limita cuántas se lanzan por clic.
 MAX_SEARCHES_PER_CLICK = 12
@@ -184,6 +187,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CHANNEL_LABELS=CHANNEL_LABELS,
         FEEDBACK_REASONS=FEEDBACK_REASONS,
         RULE_LABELS=RULE_LABELS,
+        REPLY_CATEGORIES=REPLY_CATEGORIES,
+        OBJECTIONS=OBJECTIONS,
         LeadStatus=LeadStatus,
         Priority=Priority,
         company=settings.company_name,
@@ -477,13 +482,134 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return back(safe_next(next, f"/leads/{lead_id}"), "Marcado como 'no contactar'")
 
     @app.post("/leads/{lead_id}/contactado")
-    def lead_contacted(lead_id: int, channel: Channel = Form(...), message: str = Form("")):
+    def lead_contacted(
+        lead_id: int,
+        channel: Channel = Form(...),
+        message: str = Form(""),
+        template: str = Form(""),
+    ):
         with db() as (session, ws):
             try:
-                mark_contacted(session, get_lead(session, ws.id, lead_id), channel, message or None)
+                mark_contacted(
+                    session,
+                    get_lead(session, ws.id, lead_id),
+                    channel,
+                    message or None,
+                    template.removesuffix(".j2") or None,
+                )
             except LeadError as exc:
                 return back(f"/leads/{lead_id}", str(exc))
         return back(f"/leads/{lead_id}", "Contacto registrado. Seguimiento en 5 días")
+
+    # ---------------- Respuestas ----------------
+    @app.post("/leads/{lead_id}/respuesta")
+    def lead_reply(lead_id: int, text: str = Form(""), channel: Channel = Form(Channel.WHATSAPP)):
+        from cmr_leads.replies.classifier import CATEGORIES
+        from cmr_leads.replies.service import build_classifier, register_reply
+
+        if not text.strip():
+            return back(f"/leads/{lead_id}", "Pegá el texto de la respuesta")
+        with db() as (session, ws):
+            lead = get_lead(session, ws.id, lead_id)
+            interaction = register_reply(session, lead, text, build_classifier(settings), channel)
+            if interaction is None:
+                return back(f"/leads/{lead_id}", "Esa respuesta ya estaba registrada")
+            category = CATEGORIES.get(interaction.outcome, interaction.outcome)
+        return back(f"/leads/{lead_id}", f"Respuesta registrada: {category}")
+
+    @app.post("/leads/{lead_id}/chat-whatsapp")
+    def lead_whatsapp_chat(lead_id: int, file: UploadFile, my_name: str = Form("")):
+        from cmr_leads.replies.classifier import CATEGORIES
+        from cmr_leads.replies.service import build_classifier, import_whatsapp_chat
+
+        raw = file.file.read(2_000_000)
+        try:
+            content = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            content = raw.decode("latin-1")
+        with db() as (session, ws):
+            lead = get_lead(session, ws.id, lead_id)
+            result = import_whatsapp_chat(
+                session,
+                lead,
+                content,
+                build_classifier(settings),
+                file.filename,
+                my_name.strip() or settings.sender_name,
+            )
+        if result.error:
+            return back(f"/leads/{lead_id}", result.error)
+        msg = f"Chat leído: {result.replies} respuesta(s) nueva(s)"
+        if result.last_category:
+            msg += f" · última: {CATEGORIES.get(result.last_category, result.last_category)}"
+        return back(f"/leads/{lead_id}", msg)
+
+    @app.get("/respuestas", response_class=HTMLResponse)
+    def replies_page(request: Request):
+        from cmr_leads.replies.classifier import CATEGORIES, OBJECTIONS, POSITIVE
+        from cmr_leads.replies.service import reply_stats
+
+        with db() as (session, ws):
+            stats = reply_stats(session, ws.id)
+            return render(
+                request,
+                "replies.html",
+                stats=stats,
+                CATEGORIES=CATEGORIES,
+                OBJECTIONS=OBJECTIONS,
+                POSITIVE=POSITIVE,
+                ai_configured=settings.reply_ai_configured,
+            )
+
+    # ---------------- Instagram ----------------
+    @app.get("/instagram", response_class=HTMLResponse)
+    def instagram_page(request: Request):
+        from cmr_leads.instagram.analysis import build_report
+
+        with db() as (session, ws):
+            report = build_report(session, ws.id)
+            return render(
+                request,
+                "instagram.html",
+                report=report,
+                configured=settings.instagram_configured,
+                dms_configured=bool(settings.facebook_page_id),
+            )
+
+    @app.post("/instagram/actualizar")
+    def instagram_sync():
+        from cmr_leads.instagram.client import GraphClient
+        from cmr_leads.instagram.sync import daily_budget_guard, sync_instagram
+        from cmr_leads.pipeline.budget import DailyBudget
+        from cmr_leads.replies.service import build_classifier
+
+        if not settings.instagram_configured:
+            return back("/instagram", "Falta configurar la API de Instagram en .env")
+        with db() as (session, ws):
+            budget = DailyBudget(
+                session, ws.id, "meta_stats", settings.meta_max_stats_requests_per_day
+            )
+            client = GraphClient(
+                settings.meta_access_token,
+                settings.meta_graph_api_version,
+                on_request=daily_budget_guard(budget),
+            )
+            result = sync_instagram(
+                session,
+                ws,
+                client,
+                settings.instagram_business_account_id,
+                settings.facebook_page_id,
+                build_classifier(settings),
+                settings.default_country,
+                settings.instagram_posts_to_sync,
+            )
+            config = scoring_config()
+            for lead in session.scalars(
+                select(Lead).where(Lead.workspace_id == ws.id, Lead.business_score.is_(None))
+            ):
+                apply_score(lead, config)
+        return back("/instagram", result.summary())
 
     @app.post("/leads/{lead_id}/notas")
     def lead_notes(lead_id: int, notes: str = Form("")):

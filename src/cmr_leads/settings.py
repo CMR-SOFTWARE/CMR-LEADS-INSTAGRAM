@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     instagram_business_account_id: str | None = None
     meta_graph_api_version: str = "v23.0"
     meta_max_lookups_per_day: int = 150
+    # Para leer los mensajes directos (opcional): ID de la página de Facebook vinculada.
+    facebook_page_id: str | None = None
+    instagram_posts_to_sync: int = 25
+    meta_max_stats_requests_per_day: int = 300
 
     website_fetch_enabled: bool = True
     website_timeout_seconds: float = 10.0
@@ -32,9 +36,18 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.8-flash"
 
+    # IA (opcional) para clasificar respuestas. Sin clave se usan reglas.
+    anthropic_api_key: str | None = None
+    ai_model: str = "claude-opus-5-5"
+
     sender_name: str = "Tomás"
     company_name: str = "CMR Software Solutions"
     company_city: str = "San Nicolás"
+
+    @property
+    def reply_ai_configured(self) -> bool:
+        """IA para clasificar respuestas de leads (Claude)."""
+        return bool(self.anthropic_api_key)
 
     @property
     def google_places_configured(self) -> bool:
@@ -42,6 +55,7 @@ class Settings(BaseSettings):
 
     @property
     def ai_configured(self) -> bool:
+        """IA para redactar mensajes (Gemini)."""
         return bool(self.gemini_api_key)
 
     @property

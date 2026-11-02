@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Respuestas</h1><p>Quién contestó, qué dijeron y qué funciona mejor.</p></div>
+  <span class="chip {{ 'green' if ai_configured else '' }}">{{ "Clasifica con IA" if ai_configured else "Clasifica con reglas" }}</span>
+</div>
+
+<div class="kpis">
+  <div class="kpi accent"><div class="value">{{ stats.reply_rate|pct }}</div><div class="label">Tasa de respuesta</div></div>
+  <div class="kpi"><div class="value">{{ stats.contacted }}</div><div class="label">Contactados</div></div>
+  <div class="kpi"><div class="value">{{ stats.replied }}</div><div class="label">Respondieron</div></div>
+  <div class="kpi"><div class="value">{{ stats.positive }}</div><div class="label">Interesados o piden info</div></div>
+  <div class="kpi"><div class="value">{% if stats.median_hours is not none %}{{ stats.median_hours|round|int }} h{% else %}—{% endif %}</div><div class="label">Tardan en responder (mediana)</div></div>
+</div>
+
+{% if not stats.contacted %}
+<div class="notice info">Cuando marques leads como contactados y registres sus respuestas (pegándolas o subiendo el chat de WhatsApp en cada lead), acá vas a ver qué funciona.</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h2>Qué respondieron</h2></div>
+    {% set total_cat = stats.categories|sum(attribute=1) %}
+    {% for cat, count in stats.categories %}
+      <div class="dim-row" style="grid-template-columns: 150px 1fr 30px"><span>{{ CATEGORIES.get(cat, cat) }}</span><div class="bar {{ 'reach' if cat in POSITIVE else ('need' if cat in ('ahora_no', 'automatica', 'otro') else '') }}"><div style="width: {{ (count / total_cat * 100)|round }}%"></div></div><strong>{{ count }}</strong></div>
+    {% else %}<p class="muted">Sin respuestas todavía.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Objeciones más comunes</h2></div>
+    {% for obj, count in stats.objections %}
+      <div class="dim-row" style="grid-template-columns: 180px 1fr 30px"><span>{{ OBJECTIONS.get(obj, obj) }}</span><div class="bar need"><div style="width: {{ (count / stats.objections[0][1] * 100)|round }}%"></div></div><strong>{{ count }}</strong></div>
+    {% else %}<p class="muted">Ninguna detectada todavía.</p>{% endfor %}
+    <p class="muted small">Usalas para ajustar los mensajes: si "precio" aparece mucho, mencioná planes accesibles; si "ya tiene web", ofrecé mejorarla.</p>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  {% for label, rows in stats.by.items() %}
+  <div class="card">
+    <div class="card-head"><h2>Por {{ label|lower }}</h2></div>
+    <table>
+      <tr><th>{{ label }}</th><th>Contact.</th><th>Resp.</th><th>Interes.</th></tr>
+      {% for key, b in rows[:8] %}
+      <tr>
+        <td>{{ SERVICE_LABELS.get(key) or SOURCE_LABELS.get(key) or CHANNEL_LABELS.get(key) or key }}</td>
+        <td>{{ b.contacted }}</td>
+        <td>{{ b.reply_rate|pct }}</td>
+        <td><strong>{{ b.positive_rate|pct }}</strong></td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="muted">Sin datos.</td></tr>{% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Últimas respuestas</h2></div>
+  {% for lead, r in stats.recent %}
+    <a href="/leads/{{ lead.id }}" class="reply-row">
+      {{ avatar(lead) }}
+      <div style="flex:1;min-width:0">
+        <strong>{{ lead.label }}</strong> <span class="chip {{ 'green' if r.outcome in POSITIVE else ('red' if r.outcome in ('no_interesa', 'no_contactar') else '') }}">{{ CATEGORIES.get(r.outcome, r.outcome) }}</span>
+        <div class="lead-sub">{{ (r.analysis or {}).get("summary") or r.message }}</div>
+      </div>
+      <span class="muted small">{{ r.created_at|date }}</span>
+    </a>
+  {% else %}<p class="muted">Sin respuestas todavía.</p>{% endfor %}
+</div>
+{% endblock %}
