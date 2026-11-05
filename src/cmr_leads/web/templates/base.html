@@ -1,4 +1,4 @@
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, ic %}
 <!doctype html>
 <html lang="es">
 <head>
@@ -6,36 +6,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}CMR Lead Finder{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@500;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#0A1F44">
   <link rel="stylesheet" href="{{ url_for('static', path='tokens.css') }}?v={{ asset_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ asset_version }}">
 </head>
 <body>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
 <div class="layout">
   <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-logo">CMR</div>
-      <div>Lead Finder<small>{{ company }}</small></div>
-    </div>
-    <nav class="nav">
-      <a href="/" class="{{ 'active' if active == 'dashboard' }}"><span class="icon">🏠</span><span class="label">Inicio</span></a>
-      <a href="/leads" class="{{ 'active' if active in ('leads', 'lead_detail', 'lead_new') }}"><span class="icon">👥</span><span class="label">Leads</span></a>
-      <a href="/revisar" class="{{ 'active' if active == 'review' }}"><span class="icon">⚡</span><span class="label">Revisar</span></a>
-      <a href="/ventas" class="{{ 'active' if active == 'sales' }}"><span class="icon">📈</span><span class="label">Ventas</span></a>
-      <a href="/emails" class="{{ 'active' if active == 'emails' }}"><span class="icon">📧</span><span class="label">Emails</span></a>
-      <a href="/mapa" class="{{ 'active' if active == 'map' }}"><span class="icon">🗺️</span><span class="label">Mapa</span></a>
-      <a href="/respuestas" class="{{ 'active' if active == 'replies' }}"><span class="icon">💬</span><span class="label">Respuestas</span></a>
-      <a href="/instagram" class="{{ 'active' if active == 'instagram' }}"><span class="icon">📸</span><span class="label">Instagram</span></a>
-      <a href="/algoritmo" class="{{ 'active' if active == 'algorithm' }}"><span class="icon">🧠</span><span class="label">Algoritmo</span></a>
-      <a href="/importar" class="{{ 'active' if active == 'import' }}"><span class="icon">📥</span><span class="label">Importar</span></a>
+    <a class="brand" href="/" aria-label="CMR Software Solutions — Lead Finder, inicio">
+      <img class="brand-logo" src="/static/img/cmr-cubo-blanco.png" width="42" height="42" alt="">
+      <span class="brand-name"><strong>CMR</strong><span>SOFTWARE SOLUTIONS</span><span class="brand-app">Lead Finder</span></span>
+    </a>
+    <nav class="nav" aria-label="Secciones">
+      <div class="nav-group">Día a día</div>
+      <a href="/" class="{{ 'active' if active in ('dashboard',) }}" {{ 'aria-current="page"'|safe if active in ('dashboard',) }}><span class="icon">{{ ic("house") }}</span><span class="label">Inicio</span></a>
+      <a href="/leads" class="{{ 'active' if active in ('leads', 'lead_detail', 'lead_new') }}" {{ 'aria-current="page"'|safe if active in ('leads', 'lead_detail', 'lead_new') }}><span class="icon">{{ ic("users") }}</span><span class="label">Leads</span></a>
+      <a href="/revisar" class="{{ 'active' if active in ('review',) }}" {{ 'aria-current="page"'|safe if active in ('review',) }}><span class="icon">{{ ic("square-check-big") }}</span><span class="label">Revisar</span></a>
+      <a href="/emails" class="{{ 'active' if active in ('emails',) }}" {{ 'aria-current="page"'|safe if active in ('emails',) }}><span class="icon">{{ ic("mail") }}</span><span class="label">Emails</span></a>
+      <a href="/respuestas" class="{{ 'active' if active in ('replies',) }}" {{ 'aria-current="page"'|safe if active in ('replies',) }}><span class="icon">{{ ic("message-circle") }}</span><span class="label">Respuestas</span></a>
+      <div class="nav-group">Análisis</div>
+      <a href="/ventas" class="{{ 'active' if active in ('sales',) }}" {{ 'aria-current="page"'|safe if active in ('sales',) }}><span class="icon">{{ ic("chart-line") }}</span><span class="label">Ventas</span></a>
+      <a href="/mapa" class="{{ 'active' if active in ('map',) }}" {{ 'aria-current="page"'|safe if active in ('map',) }}><span class="icon">{{ ic("map") }}</span><span class="label">Mapa</span></a>
+      <a href="/instagram" class="{{ 'active' if active in ('instagram',) }}" {{ 'aria-current="page"'|safe if active in ('instagram',) }}><span class="icon">{{ ic("instagram") }}</span><span class="label">Instagram</span></a>
+      <a href="/algoritmo" class="{{ 'active' if active in ('algorithm',) }}" {{ 'aria-current="page"'|safe if active in ('algorithm',) }}><span class="icon">{{ ic("brain") }}</span><span class="label">Algoritmo</span></a>
+      <div class="nav-group">Cargar</div>
+      <a href="/importar" class="{{ 'active' if active in ('import',) }}" {{ 'aria-current="page"'|safe if active in ('import',) }}><span class="icon">{{ ic("download") }}</span><span class="label">Importar</span></a>
     </nav>
-    <div class="sidebar-footer">Los mensajes siempre los envía una persona.</div>
+    <div class="sidebar-footer">Los mensajes siempre los manda una persona del equipo.</div>
   </aside>
-  <main class="main">
+  <main class="main" id="contenido">
     {% block content %}{% endblock %}
   </main>
 </div>
-{% if msg %}<div class="toast">{{ msg }}</div>{% endif %}
+<div class="toast-region" aria-live="polite">{% if msg %}<div class="toast">{{ msg }}</div>{% endif %}</div>
 <script src="{{ url_for('static', path='app.js') }}?v={{ asset_version }}"></script>
 </body>
 </html>

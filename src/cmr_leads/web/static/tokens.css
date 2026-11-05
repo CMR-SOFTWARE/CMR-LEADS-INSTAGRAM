@@ -45,6 +45,17 @@
   --canchas-verde-claro: #98E484;
   --canchas-fondo: #ECF8E8;
 
+  /* Marcas externas (versiones AA para texto blanco) */
+  --wsp: #0B7A55;                 /* verde WhatsApp oscuro: 5.34 con blanco (#25D366 da 1.98) */
+  --wsp-hover: #075E54;
+  --ig: #C13584;                  /* 5.11 sobre blanco */
+  --cmr-gris-ui: #7B86A1;         /* bordes/anillos: 3.64 (UI) */
+
+  /* Superposiciones sobre navy */
+  --navy-hover: rgba(255, 255, 255, .07);
+  --navy-activo: rgba(102, 153, 255, .2);
+  --cmr-sombra-toast: 0 10px 30px rgba(10, 31, 68, .28);
+
   /* Degradés de marca */
   --cmr-degrade: linear-gradient(120deg, var(--cmr-azul), var(--cmr-turquesa));
   --cmr-degrade-boton: linear-gradient(120deg, var(--cmr-azul), var(--cmr-turquesa-texto));

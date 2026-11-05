@@ -41,7 +41,8 @@ function toast(text) {
   const el = document.createElement("div");
   el.className = "toast";
   el.textContent = text;
-  document.body.appendChild(el);
+  // Dentro de la región aria-live para que el lector de pantalla lo anuncie.
+  (document.querySelector(".toast-region") || document.body).appendChild(el);
   setTimeout(() => el.remove(), 4200);
 }
 
