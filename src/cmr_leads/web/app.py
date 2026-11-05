@@ -604,6 +604,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return Response(status_code=204)
         return back(f"/leads/{lead_id}", f"Contacto registrado. Próximo paso: {next_step}")
 
+    # ---------------- Cola de emails ----------------
+    @app.get("/emails", response_class=HTMLResponse)
+    def email_queue(request: Request):
+        from datetime import date
+
+        from cmr_leads.sales.email_queue import approved_today, build_email, candidates
+
+        limit = sales_config().email_daily_limit
+        with db() as (session, ws):
+            approved = [
+                build_email(lead, settings) for lead in approved_today(session, ws.id, date.today())
+            ]
+            pending = candidates(session, ws.id)
+            return render(
+                request,
+                "emails.html",
+                active="emails",
+                approved=approved,
+                candidates=pending,
+                limit=limit,
+                remaining=max(0, limit - len(approved)),
+            )
+
+    @app.post("/emails/aprobar")
+    async def email_approve(request: Request):
+        from datetime import date
+
+        from cmr_leads.sales.email_queue import approve_batch
+
+        form = await request.form()
+        ids = [int(v) for v in form.getlist("lead_id") if str(v).isdigit()]
+        with db() as (session, ws):
+            ok, out = approve_batch(
+                session, ws.id, ids, date.today(), sales_config().email_daily_limit
+            )
+        msg = f"{ok} emails aprobados"
+        if out:
+            msg += f" · {out} quedaron afuera por el tope diario"
+        return back("/emails", msg)
+
     # ---------------- Embudo: etapa, reuniones, propuestas ----------------
     @app.post("/leads/{lead_id}/embudo")
     def lead_pipeline(

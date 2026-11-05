@@ -654,3 +654,29 @@ def web(
 
 if __name__ == "__main__":
     app()
+
+
+@app.command("export-pendientes")
+def export_pendientes(
+    output: Annotated[Path, typer.Option(help="Archivo CSV de salida")] = Path(
+        "exports/pendientes.csv"
+    ),
+) -> None:
+    """Exporta los calificados sin borrador para redactarlos afuera (ej. con Claude Code)."""
+    from cmr_leads.sales.drafts import export_pending
+
+    with workspace_session() as (session, workspace):
+        count = export_pending(session, workspace.id, output)
+    console.print(f"{count} leads exportados a {output}. Completá la columna 'borrador'.")
+
+
+@app.command("import-borradores")
+def import_borradores(
+    path: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+) -> None:
+    """Importa borradores (columnas id y borrador). Nada se envía: quedan para revisar."""
+    from cmr_leads.sales.drafts import import_drafts
+
+    with workspace_session() as (session, workspace):
+        ok, skipped = import_drafts(session, workspace.id, path)
+    console.print(f"{ok} borradores importados, {skipped} salteados.")

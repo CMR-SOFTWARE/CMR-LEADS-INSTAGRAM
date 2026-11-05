@@ -69,3 +69,24 @@ def test_proposal_uses_price_config_and_closes_won(session, workspace):
     assert lead.status == LeadStatus.PROPOSAL and lead.deal_amount_ars == 17500
     set_proposal_status(session, proposal, "aceptada")
     assert lead.status == LeadStatus.WON
+
+
+def test_export_and_import_drafts(session, workspace, tmp_path):
+    import csv
+
+    from cmr_leads.sales.drafts import export_pending, import_drafts
+
+    lead = _lead(session, workspace, status=LeadStatus.APPROVED, recommended_service="pagina_web")
+    _lead(session, workspace)  # nuevo: no se exporta
+    out = tmp_path / "p.csv"
+    assert export_pending(session, workspace.id, out) == 1
+    with out.open(encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert rows[0]["plan"] and rows[0]["problema"] == "sin_web"
+    rows[0]["borrador"] = "Hola, vi su negocio"
+    with out.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    assert import_drafts(session, workspace.id, out) == (1, 0)
+    assert lead.raw_data["ai_message"] == "Hola, vi su negocio"

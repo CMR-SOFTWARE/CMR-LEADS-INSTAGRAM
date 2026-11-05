@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Emails</h1><p>Aprobás un lote y cada email se abre en tu correo para que lo mandes vos. Máximo {{ limit }} por día.</p></div></div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>✅ Aprobados hoy ({{ approved|length }} de {{ limit }})</h2></div>
+  {% for e in approved %}
+  <div class="reply">
+    <div class="chips"><a href="/leads/{{ e.lead.id }}"><strong>{{ e.lead.label }}</strong></a><span class="muted small">{{ e.lead.email }}</span>
+      {% if e.lead.status == "contacted" %}<span class="chip green">Enviado</span>{% endif %}</div>
+    <p class="reply-text"><strong>{{ e.subject }}</strong><br>{{ e.body }}</p>
+    {% if e.lead.status != "contacted" %}
+    <div class="actions">
+      <a class="btn btn-sm btn-primary" href="{{ e.mailto }}">✉️ Abrir en mi correo</a>
+      <form method="post" action="/leads/{{ e.lead.id }}/contactado" class="inline">
+        <input type="hidden" name="channel" value="email"><input type="hidden" name="message" value="{{ e.body }}">
+        <button class="btn btn-sm btn-green">✓ Ya lo mandé</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}<p class="muted" style="margin:0">Todavía no aprobaste ningún email hoy.</p>{% endfor %}
+</div>
+
+<form class="card" method="post" action="/emails/aprobar">
+  <div class="card-head"><h2>📥 Para aprobar</h2>{% if candidates %}<button class="btn btn-sm btn-primary">Aprobar seleccionados</button>{% endif %}</div>
+  {% for lead in candidates %}
+  <label class="map-toggle" style="display:flex;padding:8px 0;border-bottom:1px solid var(--border)">
+    <input type="checkbox" name="lead_id" value="{{ lead.id }}" {{ 'checked' if loop.index <= remaining }}>
+    <strong>{{ lead.label }}</strong><span class="muted small">{{ lead.email }} · {{ SERVICE_LABELS.get(lead.recommended_service, "") }}</span>
+  </label>
+  {% else %}<p class="muted" style="margin:0">No hay leads calificados con email sin contactar. Califica leads (✓) que tengan email para que aparezcan acá.</p>{% endfor %}
+</form>
+{% endblock %}

@@ -348,3 +348,18 @@ def test_pipeline_flow_from_panel(client):
     assert "/propuestas/" in str(r.url)
     assert "Guardar como PDF" in r.text and "80.000" in r.text and "150.000" in r.text
     assert _lead(client, id=lid).status == "proposal"
+
+
+def test_email_queue_needs_approval_and_respects_limit(client):
+    for i in range(3):
+        client.post("/leads/nuevo", data={"name": f"Negocio {i}", "email": f"n{i}@mail.com"})
+    with client.app_state.session_factory() as session:
+        ids = [lead.id for lead in session.query(Lead).all()]
+        for lead in session.query(Lead).all():
+            lead.status = "approved"
+        session.commit()
+    assert "Para aprobar" in client.get("/emails").text
+    r = client.post("/emails/aprobar", data={"lead_id": [str(i) for i in ids]})
+    assert "3 emails aprobados" in _msg(r)
+    page = client.get("/emails").text
+    assert "mailto:" in page and "Ya lo mandé" in page
