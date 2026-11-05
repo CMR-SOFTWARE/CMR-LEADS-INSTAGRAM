@@ -16,7 +16,8 @@ from cmr_leads.pipeline.normalize import normalize_username
 
 
 def classify_file(name: str) -> SourceType | None:
-    base = PurePosixPath(name).name.lower()
+    # Rutas de Windows (carpeta) usan "\"; las del ZIP, "/".
+    base = PurePosixPath(name.replace("\\", "/")).name.lower()
     if not base.endswith(".json"):
         return None
     if base.startswith("followers"):
