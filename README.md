@@ -27,7 +27,55 @@ listar seguidores ni seguidos (solo da los totales). El export de *Centro de cue
 y permisos → Descargar tu información → Seguidores y seguidos (formato JSON)* sí los trae, es oficial
 y no pone en riesgo la cuenta.
 
-## Google Places: buscar negocios por rubro
+## Equipo de ventas (embudo PROSPECTAR → CONTACTAR → REUNIR → CERRAR)
+
+Etapas: **Nuevo → Calificado → Contactado → Respondió → Reunión → Propuesta → Ganado / Perdido**
+(perder siempre pide motivo: precio, timing, no le interesa, eligió a otro, sin respuesta).
+El playbook con criterios, mensajes y cadencia está en [`docs/ventas-playbook.md`](docs/ventas-playbook.md).
+
+- **Inicio → 📋 Tu día:** a quién escribirle hoy, seguimientos vencidos, negocios trabados y
+  reuniones de la semana.
+- **Ficha del lead → 🧭 Embudo:** etapa, próximo paso con fecha, monto (ARS) y estado de la web
+  (sí / no / vieja). **🤝 Reuniones** (fecha, notas, próximos pasos) y **📄 Propuestas** armadas
+  desde `config/precios.yaml`, con página imprimible → "Guardar como PDF" (sin librerías extra).
+- **WhatsApp:** el botón abre `wa.me` con el mensaje precargado **y registra el contacto solo**;
+  agenda seguimiento al día 3, después al 7 y sugiere cerrar al 14 (configurable). El envío
+  siempre lo hacés vos.
+- **📧 Emails:** cola por lotes que vos aprobás, con tope diario. Cada email se abre en tu programa
+  de correo (`mailto:`); no se usa Gmail API ni se envía nada solo.
+- **📈 Ventas:** KPIs por período (leads nuevos, contactados, tasa de respuesta, reuniones,
+  propuestas, ganados e ingresos en ARS), embudo con conversiones, conversión por fuente y por
+  rubro, y motivos de pérdida. Todo sale de la base; sin datos, se muestra vacío.
+
+Configuración editable (reiniciá la app después de cambiarla):
+
+| Archivo | Qué define |
+|---|---|
+| `config/ventas.yaml` | días de seguimiento (3 y 7), cierre (14), días máximos por etapa ("trabado"), tope de emails |
+| `config/precios.yaml` | planes, variantes y precios en ARS para las propuestas |
+| `config/plantillas.yaml` | mensajes por plan y rubro con `{nombre}`, `{rubro}`, `{problema_detectado}` |
+| `config/catalogo.md` | lo que vendemos, para que Gemini elija la oferta y redacte |
+| `config/scoring.yaml` | reglas del puntaje y del plan sugerido |
+
+Borradores sin gastar cupo de IA: `cmr-leads export-pendientes` genera `exports/pendientes.csv`
+con los calificados y su contexto; completás la columna `borrador` (por ejemplo con Claude Code) y
+`cmr-leads import-borradores exports/pendientes.csv` los carga para revisar. Nada se envía.
+
+La capa de datos de ventas está en `src/cmr_leads/sales/repository.py` (un `Protocol` +
+implementación SQLAlchemy), para poder pasar a Supabase/Postgres sin reescribir las pantallas.
+
+## OpenStreetMap: búsqueda gratis
+
+Fuente gratis, sin key ni tarjeta (Overpass API). En **Importar → Buscar negocios** elegís rubros y
+localidades y tocás **Buscar en OpenStreetMap**. En la zona tiene menos teléfonos y webs que
+Google, pero no cuesta nada. Si el servidor está saturado (pasa seguido), prueba un espejo y si no,
+avisa para reintentar más tarde. Los negocios que aparecen en Google y en OSM se unen solos
+(mismo nombre + calle y número, o mismo nombre a menos de ~150 m).
+
+Para cargar a mano lo que encontrás navegando Maps o Instagram: **＋ Agregar lead** o
+**Importar → Planilla CSV**.
+
+## Google Places (opcional): buscar negocios por rubro
 
 Es la fuente principal para encontrar negocios locales. Usa la **Places API (New)** de Google, que
 es oficial: buscás un rubro ("peluquería") en una zona y carga nombre, categoría, teléfono, web,
@@ -42,8 +90,17 @@ dirección, rating y link a Maps. Si el negocio puso su Instagram como sitio web
 
 Cada página de resultados (hasta 20 negocios) es una request. Google da un cupo gratis mensual
 (del orden de 1.000 requests para este tipo de búsqueda; revisá la página de precios vigente).
-El programa tiene un tope diario (`GOOGLE_PLACES_MAX_REQUESTS_PER_DAY`, por defecto 100). Te
-recomiendo además poner una alerta de presupuesto en Google Cloud.
+El programa tiene un tope diario (`GOOGLE_PLACES_MAX_REQUESTS_PER_DAY`, por defecto 100) y uno
+mensual (`GOOGLE_PLACES_MAX_REQUESTS_PER_MONTH`, por defecto 900, debajo de las 1.000 gratis). Para
+apagar Google del todo: `GOOGLE_PLACES_ENABLED=false` (o sacá la key) y queda solo OpenStreetMap.
+
+**Para que Google nunca cobre** (el tope de la app no frena un uso de la key desde otro lado):
+
+1. Google Cloud Console → **APIs y servicios → Places API (New) → Cuotas y límites del sistema**.
+2. Buscá la cuota de **Text Search por día** y editála a **30** (31 días × 30 = 930 < 1.000 gratis).
+3. Hacé lo mismo con **Place Details por día** (la usa el mapa para ubicar locales): 300.
+4. **Facturación → Presupuestos y alertas**: presupuesto de USD 1 con alerta (solo avisa, no corta).
+5. Restringí la key a la Places API (New).
 
 Los términos de Google Maps limitan qué datos se pueden guardar a largo plazo: el `place_id`
 siempre se puede guardar, y el resto conviene refrescarlo periódicamente.
@@ -100,12 +157,17 @@ Si un dato nuevo coincide con otro lead, se **fusionan** conservando todas las f
 interacciones e historial. Los nombres parecidos se listan con `leads duplicates` para fusionarlos
 a mano (`leads merge`).
 
-## Clasificación de respuestas con IA (opcional)
+## IA con Gemini (opcional, cuota gratis)
 
-Sin configurar nada, las respuestas se clasifican con reglas (palabras clave). Si ponés
-`ANTHROPIC_API_KEY` en `.env` (la creás en console.anthropic.com), usa Claude: entiende mejor el
-tono, detecta objeciones y sugiere el próximo paso. Cada respuesta cuesta menos de un centavo de
-dólar. Si la IA falla o no hay internet, vuelve a las reglas automáticamente.
+Con `GEMINI_API_KEY` en `.env` (sacala en [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
+Gemini redacta el primer mensaje, elige la oferta con más chances por lead y clasifica las
+respuestas. **Usá solo la cuota gratuita de Google AI Studio:** no actives facturación en ese
+proyecto; así, si se agota la cuota, Gemini devuelve error y no cobra nada.
+
+Siempre hay respaldo: si Gemini falla o no hay key, el mensaje sale de `config/plantillas.yaml`,
+el plan del scoring por reglas y la clasificación de respuestas por palabras clave. A la IA no se le
+mandan teléfonos, emails ni documentos (se recortan antes) y nunca envía nada sola.
+`ANTHROPIC_API_KEY` queda como alternativa para clasificar respuestas.
 
 ## Contacto: WhatsApp
 
@@ -206,6 +268,17 @@ tests/
 Agregar una fuente nueva (por ejemplo Google Places) = una clase en `sources/` con `discover()`
 que devuelva `SourceRecord`. El resto del pipeline no cambia.
 
+## Backup y restauración
+
+Al abrir la app se hace **un backup por día** de la base en `BACKUP_DIR` (por defecto
+`data/backups`, conserva 30 días con `BACKUP_KEEP_DAYS`). Podés apuntarlo a una carpeta de
+Google Drive u OneDrive para tener copia fuera de la PC. Usa la API de backup de SQLite, así que
+la copia es consistente aunque la app esté abierta.
+
+Para restaurar: cerrá la app, copiá el backup elegido (`cmr_leads_AAAA-MM-DD.db`) sobre
+`data/cmr_leads.db` y volvé a abrirla. Las migraciones solo agregan columnas y tablas y son
+reversibles (`alembic downgrade -1`).
+
 ## Base de datos
 
 SQLite por defecto. Para pasar a PostgreSQL, alcanza con cambiar `DATABASE_URL` y correr
@@ -229,6 +302,11 @@ ruff check . && ruff format --check .
   (`add --source-ref`) o futuras fuentes oficiales.
 - Business Discovery no devuelve categoría, teléfono ni dirección. Esos datos salen de la bio, del
   sitio o de la carga manual (en la fase 2, de Google Places).
+
+## Pruebas manuales y mejoras a futuro
+
+- Checklist por etapa: [`docs/checklist-pruebas.md`](docs/checklist-pruebas.md).
+- Mejoras pagas posibles (no implementadas): [`docs/mejoras-pagas.md`](docs/mejoras-pagas.md).
 
 ## Roadmap
 
