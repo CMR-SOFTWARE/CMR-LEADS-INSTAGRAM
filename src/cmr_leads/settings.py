@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     website_timeout_seconds: float = 10.0
 
     google_places_api_key: str | None = None
+    # Google Places es OPCIONAL: con False (o sin key) no se usa y solo queda OpenStreetMap.
+    google_places_enabled: bool = True
     google_places_max_requests_per_day: int = 100
     # Google regala 1.000 consultas/mes de Text Search Enterprise; se deja margen para no pagar.
     google_places_max_requests_per_month: int = 900
@@ -62,7 +64,7 @@ class Settings(BaseSettings):
 
     @property
     def google_places_configured(self) -> bool:
-        return bool(self.google_places_api_key)
+        return self.google_places_enabled and bool(self.google_places_api_key)
 
     @property
     def ai_configured(self) -> bool:

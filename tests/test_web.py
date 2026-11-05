@@ -187,7 +187,7 @@ def test_google_search_from_panel(client, monkeypatch):
                 }
             ], None
 
-    assert "Falta la API key" in client.get("/importar").text
+    assert "Google Maps apagado" in client.get("/importar").text
     response = client.post("/importar/google", data={"quick": "gimnasio"})
     assert "Falta configurar" in _msg(response)
 

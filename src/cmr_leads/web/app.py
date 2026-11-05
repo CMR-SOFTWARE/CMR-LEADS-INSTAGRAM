@@ -102,6 +102,7 @@ SOURCE_LABELS = {
     SourceType.MANUAL: "Carga manual",
     SourceType.CSV_IMPORT: "CSV",
     SourceType.GOOGLE_PLACES: "Google Maps",
+    SourceType.OSM: "OpenStreetMap",
     SourceType.INSTAGRAM_DM: "Instagram (te escribieron)",
 }
 # Cada búsqueda son 1 a 3 requests pagas a Google: se limita cuántas se lanzan por clic.
@@ -960,6 +961,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             shutil.rmtree(path.parent, ignore_errors=True)
         return back("/importar", msg)
+
+    @app.post("/importar/osm")
+    def import_osm(query: str = Form(""), area: str = Form("")):
+        from cmr_leads.sources.osm import OsmError, OsmSource
+
+        queries = _split_terms(query)
+        areas = _split_terms(area, commas=False) or [settings.search_area]
+        if not queries:
+            return back("/importar", "Escribí qué rubro buscar")
+        combos = [(q, a) for a in areas for q in queries][:MAX_SEARCHES_PER_CLICK]
+        created = merged = 0
+        problems = []
+        config = scoring_config()
+        for q, a in combos:
+            try:
+                with db() as (session, ws):
+                    for record in OsmSource(q, a).discover():
+                        result = ingest(session, ws, record, settings.default_country)
+                        created += result.created
+                        merged += not result.created
+                        apply_score(result.lead, config)
+            except OsmError as exc:
+                problems.append(str(exc))
+                if "saturado" in str(exc):
+                    break
+        msg = f"OpenStreetMap: {created} nuevos, {merged} ya estaban"
+        if problems:
+            msg += " · " + " · ".join(dict.fromkeys(problems))
+        return back("/leads?source=osm", msg)
 
     @app.post("/importar/google")
     def import_google(

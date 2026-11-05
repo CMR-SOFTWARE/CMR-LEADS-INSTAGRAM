@@ -3,14 +3,13 @@
 <div class="page-head"><div><h1>Importar</h1><p>Sumá leads y completá sus datos.</p></div></div>
 
 <form class="card" method="post" action="/importar/google" style="margin-bottom:16px">
-  <div class="card-head"><h2>🗺️ Buscar negocios en Google Maps</h2><span class="chip {{ 'green' if google_configured else 'amber' }}">{{ "API conectada" if google_configured else "Falta la API key" }}</span></div>
-  <p class="muted small" style="margin-top:0">Busca por rubro con la API oficial de Google y carga nombre, teléfono, web y dirección. Hasta 60 resultados por búsqueda.</p>
-  {% if not google_configured %}<div class="notice">Agregá <code>GOOGLE_PLACES_API_KEY</code> en el archivo <code>.env</code> y reiniciá el programa (ver README → "Google Places").</div>{% endif %}
+  <div class="card-head"><h2>🗺️ Buscar negocios</h2><span class="chip green">OpenStreetMap: gratis</span><span class="chip {{ 'green' if google_configured else '' }}">{{ "Google Maps conectado" if google_configured else "Google Maps apagado" }}</span></div>
+  <p class="muted small" style="margin-top:0"><strong>OpenStreetMap</strong> es gratis y sin key, pero en la zona tiene pocos teléfonos y webs. <strong>Google Maps</strong> (opcional) trae más datos y usa tu cupo gratis con tope. Los negocios repetidos entre fuentes se unen solos.</p>
   <div class="search-grid">
     <div class="field"><label>Rubros <span class="muted small">(separados por coma)</span></label><textarea name="query" rows="3" data-terms="rubros" placeholder="peluquería, gimnasio, ferretería…"></textarea></div>
     <div class="field"><label>Localidades <span class="muted small">(una por línea)</span></label><textarea name="area" rows="3" data-terms="zonas">{{ search_area }}</textarea></div>
     <div class="field"><label>Por búsqueda</label><select name="max_results"><option value="20">20</option><option value="40">40</option><option value="60">60</option></select></div>
-    <div class="field"><button class="btn btn-primary" {{ 'disabled' if not google_configured }}>Buscar</button></div>
+    <div class="field" style="display:flex;flex-direction:column;gap:6px"><button class="btn btn-primary" formaction="/importar/osm">Buscar en OpenStreetMap</button><button class="btn" {{ 'disabled title="Falta GOOGLE_PLACES_API_KEY en .env"'|safe if not google_configured }}>Buscar en Google</button></div>
   </div>
   <p class="muted small" style="margin:4px 0 0">Se busca cada rubro en cada localidad (hasta 12 búsquedas por clic). Cada 20 resultados es 1 consulta a Google.</p>
   <p class="small" style="margin:4px 0 0"><strong>Consultas a Google:</strong> este mes {{ google_usage.month }} de {{ google_usage.month_limit }} · hoy {{ google_usage.today }} de {{ google_usage.day_limit }} <span class="muted">(Google regala 1.000 por mes; al llegar al tope la app deja de buscar)</span></p>
