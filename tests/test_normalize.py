@@ -71,3 +71,13 @@ def test_whatsapp_chat_link_detects_short_links():
     )
     assert whatsapp_chat_link(None, "Escribinos https://wa.link/abc123") == "https://wa.link/abc123"
     assert whatsapp_chat_link("https://estetica.com.ar") is None
+
+
+def test_redact_personal_data():
+    from cmr_leads.pipeline.normalize import redact_personal_data
+
+    text = "Escribime a juan@mail.com o al +54 9 336 412-3456, DNI 30.123.456"
+    clean = redact_personal_data(text)
+    assert "juan@mail.com" not in clean and "412-3456" not in clean and "30.123.456" not in clean
+    assert "[email]" in clean and "[teléfono]" in clean
+    assert redact_personal_data("¿Cuánto sale el plan?") == "¿Cuánto sale el plan?"

@@ -93,7 +93,9 @@ def build_lead_facts(lead: Lead, include_offer: bool = True) -> str:
         followers = f" ({lead.followers} seguidores)" if lead.followers else ""
         facts.append(f"Instagram: @{lead.instagram_username}{followers}")
     if lead.bio:
-        facts.append(f"Bio: {lead.bio[:300]}")
+        from cmr_leads.pipeline.normalize import redact_personal_data
+
+        facts.append(f"Bio: {redact_personal_data(lead.bio)[:300]}")
     ai_offer = (lead.raw_data or {}).get("ai_offer") if include_offer else None
     if ai_offer:
         facts.append(f"Qué ofrecerle (ya analizado): {ai_offer['offer']}. {ai_offer['pitch']}")

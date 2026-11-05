@@ -486,7 +486,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 text = write_message(lead, settings)
             except AiWriterError as exc:
-                return back(f"/leads/{lead_id}", str(exc))
+                # Sin cupo o sin key: queda el borrador por plantilla (reglas), que ya se muestra.
+                return back(
+                    f"/leads/{lead_id}",
+                    f"{exc}. Queda el borrador armado con la plantilla del plan.",
+                )
             lead.raw_data = {**(lead.raw_data or {}), "ai_message": text}
         return back(f"/leads/{lead_id}", "Mensaje redactado con IA: revisalo antes de enviar")
 

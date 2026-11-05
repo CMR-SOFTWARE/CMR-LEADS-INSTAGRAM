@@ -223,3 +223,17 @@ def name_key(name: str | None) -> str | None:
     words = re.findall(r"[a-z0-9]+", normalize_text(name))
     words = [w for w in words if w not in _BUSINESS_NOISE]
     return " ".join(words) or None
+
+
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_PHONE_RE = re.compile(r"(?<!\w)\+?\d[\d\s().-]{6,}\d")
+_DNI_CUIT_RE = re.compile(r"\b\d{2}[-.]?\d{8}[-.]?\d\b|\b\d{1,2}\.?\d{3}\.?\d{3}\b")
+
+
+def redact_personal_data(text: str | None) -> str:
+    """Saca emails, teléfonos, DNI/CUIT antes de mandar texto a una IA externa."""
+    if not text:
+        return ""
+    text = _EMAIL_RE.sub("[email]", text)
+    text = _DNI_CUIT_RE.sub("[documento]", text)
+    return _PHONE_RE.sub("[teléfono]", text)

@@ -37,6 +37,10 @@ SCHEMA = {
 
 
 def _user_prompt(text: str, context: dict) -> str:
+    from cmr_leads.pipeline.normalize import redact_personal_data
+
+    # Nunca mandar datos personales a la IA: solo el contenido de la respuesta.
+    text = redact_personal_data(text)
     context_lines = "\n".join(f"{k}: {v}" for k, v in context.items() if v)
     return (
         f"Datos del negocio:\n{context_lines or '(sin datos)'}\n\n"
