@@ -74,9 +74,77 @@ def build_context(lead: Lead, settings: Settings) -> dict:
     }
 
 
+APPOINTMENT_HINTS = ("turno", "turnos", "reserva", "reservas", "agenda", "cita")
+ORDER_HINTS = ("pedido", "pedidos", "envio", "envios", "delivery", "encarga")
+
+
+def detect_problem(lead: Lead) -> str:
+    """Clave del problema detectado (ver `problemas:` en config/plantillas.yaml)."""
+    from cmr_leads.pipeline.normalize import normalize_text
+
+    bio = normalize_text(lead.bio)
+    by_message = any(w in bio for w in ("dm", "mensaje", "md", "whatsapp", "wsp", "privado"))
+    if by_message and any(w in bio for w in APPOINTMENT_HINTS):
+        return "turnos_por_mensaje"
+    if by_message and any(w in bio for w in ORDER_HINTS):
+        return "pedidos_por_mensaje"
+    if lead.has_link_in_bio_only:
+        return "link_en_bio"
+    if not lead.website:
+        return "solo_instagram" if lead.instagram_username else "sin_web"
+    signals = (lead.raw_data or {}).get("website") or {}
+    if signals and not signals.get("reachable"):
+        return "web_caida"
+    if signals.get("mobile_viewport") is False or signals.get("https") is False:
+        return "web_vieja"
+    return "generico"
+
+
+def _load_yaml_templates(path) -> dict:
+    import yaml
+
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+
+def render_from_config(lead: Lead, settings: Settings) -> tuple[str, str] | None:
+    """Plantilla de config/plantillas.yaml por plan + rubro. None si no hay archivo."""
+    config = _load_yaml_templates(settings.templates_path)
+    planes = config.get("planes") or {}
+    if not planes:
+        return None
+    plan = lead.recommended_service or "generico"
+    by_rubro = (config.get("rubros") or {}).get(plan) or {}
+    template = by_rubro.get(lead.business_type or "") or planes.get(plan) or planes.get("generico")
+    if not template:
+        return None
+    problems = config.get("problemas") or {}
+    key = detect_problem(lead)
+    values = {
+        "nombre": lead.display_name or "su negocio",
+        "rubro": BUSINESS_TYPE_LABELS.get(lead.business_type or "", "su rubro"),
+        "problema_detectado": problems.get(key) or problems.get("generico", ""),
+        "empresa": settings.company_name,
+        "ciudad": settings.company_city,
+    }
+
+    class _Safe(dict):
+        def __missing__(self, k):  # una variable mal escrita no rompe el mensaje
+            return "{" + k + "}"
+
+    name = f"{plan}/{lead.business_type}" if lead.business_type in by_rubro else plan
+    return " ".join(template.split()).format_map(_Safe(values)), name
+
+
 def generate_message(lead: Lead, settings: Settings) -> MessageDraft:
-    template_name = SERVICE_TEMPLATES.get(lead.recommended_service or "", DEFAULT_TEMPLATE)
-    text = _clean(_env.get_template(template_name).render(**build_context(lead, settings)))
+    rendered = render_from_config(lead, settings)
+    if rendered:
+        text, template_name = rendered
+    else:
+        template_name = SERVICE_TEMPLATES.get(lead.recommended_service or "", DEFAULT_TEMPLATE)
+        text = _clean(_env.get_template(template_name).render(**build_context(lead, settings)))
     if lead.whatsapp_e164:
         return MessageDraft(
             text, Channel.WHATSAPP, whatsapp_link(lead.whatsapp_e164, text), template_name

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     scoring_config: Path = Path("config/scoring.yaml")
     catalog_path: Path = Path("config/catalogo.md")
     sales_config: Path = Path("config/ventas.yaml")
+    templates_path: Path = Path("config/plantillas.yaml")
     prices_config: Path = Path("config/precios.yaml")
     # Backup diario automático de la base (al abrir la app). Podés apuntarlo a Drive/OneDrive.
     backup_dir: Path = Path("data/backups")

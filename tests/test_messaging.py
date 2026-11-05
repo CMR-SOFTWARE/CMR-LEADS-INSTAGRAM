@@ -1,3 +1,4 @@
+from pathlib import Path
 from urllib.parse import unquote
 
 from cmr_leads.db.models import Lead
@@ -12,6 +13,7 @@ def _settings():
         sender_name="Tomás",
         company_name="CMR Software Solutions",
         company_city="San Nicolás",
+        templates_path=Path("no-existe.yaml"),  # prueba las plantillas .j2 de respaldo
     )
 
 
@@ -56,3 +58,26 @@ def test_link_in_bio_template_mentions_it():
     )
     draft = generate_message(lead, _settings())
     assert "link de la bio" in draft.text
+
+
+def test_yaml_templates_by_plan_rubro_and_problem():
+    from cmr_leads.messaging.generator import detect_problem
+
+    settings = Settings(_env_file=None, company_name="CMR", company_city="San Nicolás")
+    gym = Lead(
+        display_name="Gym Fuerza",
+        business_type="deportes",
+        recommended_service="sistema_turnos",
+        instagram_username="gym.fuerza",
+        bio="Reservá tu turno por DM",
+        whatsapp_e164="+5493364123456",
+    )
+    assert detect_problem(gym) == "turnos_por_mensaje"
+    draft = generate_message(gym, settings)
+    assert draft.template == "sistema_turnos/deportes"
+    assert "los turnos los toman por mensaje" in draft.text
+    assert "reserva de clases" in draft.text
+    assert "{" not in draft.text
+    optica = Lead(display_name="Óptica Centro", recommended_service="pagina_web")
+    text = generate_message(optica, settings).text
+    assert "todavía no tienen página web" in text
