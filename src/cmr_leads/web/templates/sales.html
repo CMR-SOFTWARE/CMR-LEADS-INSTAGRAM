@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Equipo de ventas</h1><p>Prospectar → Contactar → Reunir → Cerrar. Todo sale de la base real.</p></div>
+  <div class="chips">
+    {% for key, label in periods %}<a class="chip {{ 'accent' if key == period }}" href="/ventas?periodo={{ key }}">{{ label }}</a>{% endfor %}
+  </div>
+</div>
+
+{% if m.empty %}
+<div class="card"><p class="muted" style="margin:0">Todavía no hay actividad en este período. Cuando busques, califiques y contactes leads, los números aparecen acá.</p></div>
+{% else %}
+<div class="kpis">
+  <div class="kpi"><div class="value">{{ m.new_leads }}</div><div class="label">Leads nuevos</div></div>
+  <div class="kpi"><div class="value">{{ m.contacted }}</div><div class="label">Contactados</div></div>
+  <div class="kpi"><div class="value">{{ m.reply_rate|pct }}</div><div class="label">Tasa de respuesta</div></div>
+  <div class="kpi"><div class="value">{{ m.meetings }}</div><div class="label">Reuniones</div></div>
+  <div class="kpi"><div class="value">{{ m.proposals }}</div><div class="label">Propuestas</div></div>
+  <div class="kpi"><div class="value">{{ m.won }}</div><div class="label">Ganados</div></div>
+  <div class="kpi accent"><div class="value">$ {{ "{:,}".format(m.won_ars).replace(",", ".") }}</div><div class="label">Ingresos ganados (ARS)</div></div>
+</div>
+<p class="muted small">Actividad del período: cuántos leads llegaron por primera vez a cada etapa. La tasa de respuesta es sobre los contactados en el período.</p>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>🔻 Embudo</h2><span class="muted small">Leads encontrados en el período</span></div>
+    {% set top = m.funnel[0].count or 1 %}
+    {% for step in m.funnel %}
+    <div class="dim-row">
+      <span>{{ step.label }}</span>
+      <div class="bar fit"><div style="width: {{ (step.count / top * 100)|round }}%"></div></div>
+      <strong>{{ step.count }}</strong>
+      <span class="muted small" style="min-width:52px;text-align:right">{{ step.rate|pct if step.rate is not none else "" }}</span>
+    </div>
+    {% endfor %}
+    <p class="muted small" style="margin-bottom:0">El % es la conversión desde la etapa anterior.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>❌ Motivos de pérdida</h2></div>
+    {% for label, count in m.lost_reasons %}
+    <div class="dim-row"><span>{{ label }}</span><div class="bar need"><div style="width: {{ (count / m.lost_reasons[0][1] * 100)|round }}%"></div></div><strong>{{ count }}</strong></div>
+    {% else %}<p class="muted" style="margin:0">Sin negocios perdidos en el período.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  {% for title, rows in [("📍 Conversión por fuente", m.by_source), ("🏷️ Conversión por rubro", m.by_rubro)] %}
+  <div class="card">
+    <div class="card-head"><h2>{{ title }}</h2></div>
+    {% if rows %}
+    <table class="table">
+      <thead><tr><th></th><th>Leads</th><th>Contact.</th><th>Resp.</th><th>Ganados</th></tr></thead>
+      <tbody>
+      {% for r in rows %}<tr><td>{{ r.name }}</td><td>{{ r.leads }}</td><td>{{ r.contacted }}</td><td>{{ r.replied }}{% if r.reply_rate is not none %} <span class="muted small">({{ r.reply_rate|pct }})</span>{% endif %}</td><td>{{ r.won }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted" style="margin:0">Sin datos en el período.</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

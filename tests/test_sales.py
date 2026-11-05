@@ -90,3 +90,47 @@ def test_export_and_import_drafts(session, workspace, tmp_path):
         writer.writerows(rows)
     assert import_drafts(session, workspace.id, out) == (1, 0)
     assert lead.raw_data["ai_message"] == "Hola, vi su negocio"
+
+
+def test_metrics_funnel_closes_and_counts_real_data(session, workspace):
+    from cmr_leads.sales.metrics import compute_metrics
+    from cmr_leads.sales.repository import SqlSalesRepository
+
+    repo = SqlSalesRepository(session, workspace.id)
+    empty = compute_metrics(repo, None, utcnow() + timedelta(days=1))
+    assert empty.empty and empty.reply_rate is None  # sin datos: vacío, nunca de ejemplo
+
+    config = SalesConfig()
+    won = _lead(session, workspace, status=LeadStatus.APPROVED)
+    register_contact(session, won, Channel.WHATSAPP, config)
+    change_stage(session, won, LeadStatus.REPLIED)
+    change_stage(session, won, LeadStatus.WON)
+    won.deal_amount_ars = 80000
+    lost = _lead(session, workspace, status=LeadStatus.APPROVED)
+    register_contact(session, lost, Channel.WHATSAPP, config)
+    change_stage(session, lost, LeadStatus.LOST, lost_reason="sin_respuesta")
+    _lead(session, workspace)  # nuevo sin trabajar
+    session.flush()
+
+    m = compute_metrics(repo, utcnow() - timedelta(days=1), utcnow() + timedelta(days=1))
+    funnel = {step.stage: step.count for step in m.funnel}
+    assert funnel["new"] == 3 and funnel["contacted"] == 2 and funnel["replied"] == 1
+    assert funnel["won"] == 1
+    counts = [step.count for step in m.funnel]
+    assert counts == sorted(counts, reverse=True)  # el embudo siempre baja
+    assert m.contacted == 2 and m.reply_rate == 0.5 and m.won_ars == 80000
+    assert m.lost_reasons == [("Sin respuesta", 1)]
+
+
+def test_briefing_lists_people_to_contact_and_overdue(session, workspace):
+    from cmr_leads.sales.briefing import build_briefing
+    from cmr_leads.sales.repository import SqlSalesRepository
+
+    ready = _lead(session, workspace, status=LeadStatus.APPROVED, whatsapp_e164="+5493364000000")
+    late = _lead(session, workspace, status=LeadStatus.APPROVED, whatsapp_e164="+5493364000001")
+    register_contact(session, late, Channel.WHATSAPP, SalesConfig())
+    late.next_follow_up_at = utcnow() - timedelta(days=2)
+    session.flush()
+    b = build_briefing(SqlSalesRepository(session, workspace.id), SalesConfig(), utcnow())
+    assert [lead.id for lead in b.to_contact] == [ready.id]
+    assert [a.lead.id for a in b.follow_ups] == [late.id]

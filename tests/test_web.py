@@ -363,3 +363,11 @@ def test_email_queue_needs_approval_and_respects_limit(client):
     assert "3 emails aprobados" in _msg(r)
     page = client.get("/emails").text
     assert "mailto:" in page and "Ya lo mandé" in page
+
+
+def test_sales_dashboard_and_briefing_render(client):
+    page = client.get("/ventas").text
+    assert "Equipo de ventas" in page and "Todavía no hay actividad" in page
+    assert "Tu día" in client.get("/").text
+    for periodo in ("7d", "mes", "todo", "cualquiera"):
+        assert client.get(f"/ventas?periodo={periodo}").status_code == 200

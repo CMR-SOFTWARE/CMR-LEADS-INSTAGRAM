@@ -1,0 +1,34 @@
+{# Briefing diario: se incluye en el Inicio. Solo datos reales; si no hay nada, estado vacío. #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>📋 Tu día</h2><a href="/ventas" class="small">Ver equipo de ventas</a></div>
+  {% if briefing.empty %}
+  <p class="muted" style="margin:0">Nada pendiente por hoy. Calificá leads nuevos (✓) para tener a quién escribirle.</p>
+  {% else %}
+  <div class="grid grid-2">
+    <div>
+      <h3 class="small muted" style="margin:0 0 6px">✉️ A quién escribirle hoy</h3>
+      {% for lead in briefing.to_contact %}
+      <a class="reply-row" href="/leads/{{ lead.id }}"><strong>{{ lead.label }}</strong><span class="muted small">{{ SERVICE_LABELS.get(lead.recommended_service, "") }}</span></a>
+      {% else %}<p class="muted small" style="margin:0">No hay calificados sin contactar.</p>{% endfor %}
+      {% if briefing.to_qualify %}
+      <h3 class="small muted" style="margin:12px 0 6px">🔍 Para calificar</h3>
+      {% for lead in briefing.to_qualify %}<a class="reply-row" href="/leads/{{ lead.id }}"><span>{{ lead.label }}</span><span class="muted small">{{ SERVICE_LABELS.get(lead.recommended_service, "") }}</span></a>{% endfor %}
+      {% endif %}
+    </div>
+    <div>
+      <h3 class="small muted" style="margin:0 0 6px">⏰ Seguimientos vencidos</h3>
+      {% for a in briefing.follow_ups %}
+      <a class="reply-row" href="/leads/{{ a.lead.id }}"><strong>{{ a.lead.label }}</strong><span class="chip {{ 'red' if a.kind == 'cerrar' else 'amber' }}">{{ a.detail }}{% if a.days %} · hace {{ a.days }} d{% endif %}</span></a>
+      {% else %}<p class="muted small" style="margin:0">Ninguno vencido.</p>{% endfor %}
+      <h3 class="small muted" style="margin:12px 0 6px">🧱 Negocios trabados</h3>
+      {% for a in briefing.stuck %}
+      <a class="reply-row" href="/leads/{{ a.lead.id }}"><strong>{{ a.lead.label }}</strong><span class="chip red">{{ a.detail }}</span></a>
+      {% else %}<p class="muted small" style="margin:0">Ninguno trabado.</p>{% endfor %}
+      {% if briefing.meetings %}
+      <h3 class="small muted" style="margin:12px 0 6px">🤝 Reuniones (próximos 7 días)</h3>
+      {% for mt in briefing.meetings %}<a class="reply-row" href="/leads/{{ mt.lead_id }}"><strong>{{ mt.lead.label }}</strong><span class="muted small">{{ mt.scheduled_at.strftime("%d/%m %H:%M") }}</span></a>{% endfor %}
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>

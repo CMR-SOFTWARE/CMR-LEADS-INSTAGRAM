@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from cmr_leads.db.models import Lead, Workspace
+from cmr_leads.db.models import Lead, Workspace, utcnow
 from cmr_leads.db.session import get_or_create_workspace, make_engine, make_session_factory
 from cmr_leads.domain.enums import Channel, EnrichmentState, LeadStatus, Priority, SourceType
 from cmr_leads.domain.schemas import RawProfile, SourceRecord
@@ -356,6 +356,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             auto = load_state(settings.auto_search_state).get("last_result")
             follow_ups = follow_ups_due(session, ws.id)
+            from cmr_leads.sales.briefing import build_briefing
+            from cmr_leads.sales.repository import SqlSalesRepository
+
+            briefing = build_briefing(SqlSalesRepository(session, ws.id), sales_config(), utcnow())
             sources = source_stats(session, ws.id)
             return render(
                 request,
@@ -363,6 +367,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 stats=stats,
                 top=top,
                 follow_ups=follow_ups,
+                briefing=briefing,
                 sources=sources,
                 instagram_configured=settings.instagram_configured,
                 auto=auto,
@@ -603,6 +608,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if is_fetch:
             return Response(status_code=204)
         return back(f"/leads/{lead_id}", f"Contacto registrado. Próximo paso: {next_step}")
+
+    # ---------------- Equipo de ventas ----------------
+    @app.get("/ventas", response_class=HTMLResponse)
+    def sales_dashboard(request: Request, periodo: str = "30d"):
+        from datetime import timedelta
+
+        from cmr_leads.sales.metrics import compute_metrics
+        from cmr_leads.sales.repository import SqlSalesRepository
+
+        now = utcnow()
+        periods = [
+            ("7d", "7 días"),
+            ("30d", "30 días"),
+            ("90d", "90 días"),
+            ("mes", "Este mes"),
+            ("todo", "Todo"),
+        ]
+        starts = {
+            "7d": now - timedelta(days=7),
+            "30d": now - timedelta(days=30),
+            "90d": now - timedelta(days=90),
+            "mes": now.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+            "todo": None,
+        }
+        periodo = periodo if periodo in starts else "30d"
+        with db() as (session, ws):
+            metrics = compute_metrics(SqlSalesRepository(session, ws.id), starts[periodo], now)
+            return render(
+                request, "sales.html", active="sales", m=metrics, period=periodo, periods=periods
+            )
 
     # ---------------- Cola de emails ----------------
     @app.get("/emails", response_class=HTMLResponse)
