@@ -65,3 +65,28 @@ document.querySelectorAll("[data-add]").forEach((chip) => {
     field.focus();
   });
 });
+
+// Embudo: el motivo de pérdida aparece (y es obligatorio) solo al elegir "Perdido".
+document.querySelectorAll("[data-pipeline-form]").forEach((form) => {
+  const stage = form.querySelector("[data-stage-select]");
+  const reasonBox = form.querySelector("[data-lost-reason]");
+  const reason = reasonBox?.querySelector("select");
+  const sync = () => {
+    const lost = stage.value === "lost";
+    reasonBox.hidden = !lost;
+    if (reason) reason.required = lost;
+  };
+  stage?.addEventListener("change", sync);
+  if (stage && reasonBox) sync();
+});
+
+// WhatsApp: al abrir el chat se registra el contacto (y el seguimiento a 3 días) sin otro clic.
+document.querySelectorAll("[data-register]").forEach((link) => {
+  link.addEventListener("click", () => {
+    const text = document.querySelector("[data-message] textarea")?.value || "";
+    const body = new URLSearchParams({ channel: link.dataset.channel || "whatsapp", message: text, template: link.dataset.template || "" });
+    fetch(link.dataset.register, { method: "POST", body, keepalive: true, headers: { "X-Requested-With": "fetch" } })
+      .then((r) => { if (r.ok) { toast("Contacto registrado · seguimiento en 3 días"); setTimeout(() => location.reload(), 1500); } })
+      .catch(() => {});
+  });
+});

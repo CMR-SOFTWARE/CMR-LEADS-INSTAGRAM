@@ -315,3 +315,36 @@ def test_daily_backup_runs_once_per_day(tmp_path):
         "cmr_leads_2026-11-02.db",
         "cmr_leads_2026-11-03.db",
     ]
+
+
+def test_pipeline_flow_from_panel(client):
+    client.post("/leads/nuevo", data={"instagram": "pelu.sofi", "name": "Pelu Sofi"})
+    lead = _lead(client, instagram_username="pelu.sofi")
+    lid = lead.id
+    page = client.get(f"/leads/{lid}").text
+    assert "Embudo" in page and "Reuniones" in page and "Propuestas" in page
+
+    # WhatsApp registra solo (fetch) -> 204 y seguimiento a 3 días
+    r = client.post(
+        f"/leads/{lid}/contactado",
+        data={"channel": "whatsapp", "message": "hola"},
+        headers={"X-Requested-With": "fetch"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 204
+    assert _lead(client, id=lid).status == "contacted"
+
+    # Perdido sin motivo no se guarda
+    r = client.post(f"/leads/{lid}/embudo", data={"status": "lost"})
+    assert "motivo" in _msg(r) and _lead(client, id=lid).status == "contacted"
+
+    client.post(
+        f"/leads/{lid}/reunion",
+        data={"scheduled_at": "2026-11-10T10:00", "next_steps": "Propuesta"},
+    )
+    assert _lead(client, id=lid).status == "meeting"
+
+    r = client.post(f"/leads/{lid}/propuesta", data={"plan": "pagina_web", "one_time": "$ 150.000"})
+    assert "/propuestas/" in str(r.url)
+    assert "Guardar como PDF" in r.text and "80.000" in r.text and "150.000" in r.text
+    assert _lead(client, id=lid).status == "proposal"

@@ -1,0 +1,60 @@
+# Plantillas del primer mensaje (se usan cuando no hay borrador de Gemini o si Gemini falla).
+# Variables: {nombre} {rubro} {problema_detectado} {empresa} {ciudad}
+# Primero se busca plan + rubro (rubros:), si no, la del plan (planes:), si no, "generico".
+# Rubros posibles: estetica, salud, deportes, gastronomia, indumentaria, comercio, profesional,
+# inmobiliaria, automotor, educacion, eventos.
+
+planes:
+  cmr_nexo: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+    Tenemos CMR Nexo: los clientes sacan turno solos las 24 hs y les llega la confirmación por
+    WhatsApp. Ahora está con promo de lanzamiento. ¿Les muestro cómo funciona?
+  cmr_canchas: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+    Con CMR Canchas la gente reserva la cancha online a cualquier hora y ustedes ven la grilla
+    del día sin contestar mensajes. ¿Les interesa verlo?
+  pagina_web: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+    Armamos webs simples para que los encuentren en Google y les escriban directo por WhatsApp.
+    ¿Les muestro un ejemplo?
+  mejora_web: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Estuve viendo la web de
+    {nombre} y {problema_detectado}. Se la podemos renovar para que se vea bien en el celular.
+    ¿Les interesa que les muestre cómo quedaría?
+  tienda_online: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+    Les podemos armar una tienda online con catálogo y pedidos, así venden sin estar
+    respondiendo uno por uno. ¿Les interesa verlo?
+  sistema_turnos: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+    Les podemos sumar turnos online con seña y confirmación por WhatsApp, para que no tengan que
+    coordinar todo por mensaje. ¿Les muestro cómo funciona?
+  sistema_a_medida: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Hacemos sistemas a medida para
+    negocios de la zona (stock, pedidos, clientes). ¿Les sirve que charlemos cómo trabajan hoy?
+  generico: >-
+    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Hacemos webs y sistemas para
+    negocios de la zona. ¿Les interesa que les cuente?
+
+rubros:
+  sistema_turnos:
+    deportes: >-
+      Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+      Les podemos sumar reserva de clases online con confirmación por WhatsApp, así los alumnos
+      se anotan solos. ¿Les muestro cómo funciona?
+  tienda_online:
+    gastronomia: >-
+      Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
+      Les podemos armar la carta online con pedidos directo a su WhatsApp, sin comisiones de
+      apps. ¿Les interesa verlo?
+
+# Frases para {problema_detectado} según lo que se sabe del negocio.
+problemas:
+  sin_web: todavía no tienen página web
+  solo_instagram: se manejan solo con Instagram
+  link_en_bio: todo pasa por el link de la bio
+  web_vieja: la web no se adapta bien al celular
+  web_caida: la web que figura en Google no está funcionando
+  turnos_por_mensaje: los turnos los toman por mensaje
+  pedidos_por_mensaje: los pedidos los toman por mensaje
+  generico: tienen un negocio con buen movimiento en la zona

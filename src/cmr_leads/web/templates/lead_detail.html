@@ -51,9 +51,9 @@
         <textarea>{{ draft.text }}</textarea>
         <div class="actions" style="margin-top:12px">
           {% if lead.whatsapp_e164 %}
-          <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
+          <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" data-template="{{ draft.template }}" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
           {% elif wa_chat_link %}
-          <a class="btn btn-whatsapp" data-dm href="{{ wa_chat_link }}" target="_blank" rel="noopener" title="Abre el chat del negocio; el mensaje queda copiado para pegarlo">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
+          <a class="btn btn-whatsapp" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" data-template="{{ draft.template }}" href="{{ wa_chat_link }}" target="_blank" rel="noopener" title="Abre el chat del negocio; el mensaje queda copiado para pegarlo">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
           {% endif %}
           {% if lead.instagram_username %}
           <a class="btn btn-instagram" data-dm href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ icon("instagram") }} Copiar y abrir DM</a>
@@ -67,7 +67,7 @@
         <form method="post" action="/leads/{{ lead.id }}/contactado" class="actions" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="message" data-sent-message>
           <input type="hidden" name="template" value="{{ draft.template }}">
-          <span class="muted small">¿Ya lo enviaste?</span>
+          <span class="muted small">El botón de WhatsApp lo registra solo. ¿Lo mandaste por otro lado?</span>
           <select name="channel" style="width:auto">
             {% for key, label in CHANNEL_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if key == draft.channel }}>{{ label }}</option>{% endfor %}
           </select>
@@ -118,13 +118,25 @@
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>Estado</h2></div>
-      <form method="post" action="/leads/{{ lead.id }}/estado" class="actions">
-        <select name="status" style="flex:1">
-          {% for key, label in STATUS_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if lead.status == key }}>{{ label }}</option>{% endfor %}
-        </select>
-        <button class="btn">Guardar</button>
+      <div class="card-head"><h2>🧭 Embudo</h2>{% if lead.lost_reason %}<span class="chip red">Perdido: {{ LOST_REASON_LABELS.get(lead.lost_reason, lead.lost_reason) }}</span>{% endif %}</div>
+      <form method="post" action="/leads/{{ lead.id }}/embudo" class="stack" data-pipeline-form>
+        <div class="field"><label>Etapa</label>
+          <select name="status" data-stage-select>
+            {% for key, label in STAGE_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if lead.status == key }}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field" data-lost-reason {{ 'hidden' if lead.status != 'lost' }}><label>Motivo de pérdida (obligatorio)</label>
+          <select name="lost_reason">
+            <option value="">Elegí un motivo…</option>
+            {% for key, label in LOST_REASON_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if lead.lost_reason == key }}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><label>Próximo paso</label><input type="text" name="next_step" value="{{ lead.next_step or '' }}" placeholder="Ej.: mandarle ejemplos de Canito Skin"></div>
+        <div class="field"><label>Fecha del próximo paso</label><input type="date" name="next_step_at" value="{{ lead.next_follow_up_at.strftime('%Y-%m-%d') if lead.next_follow_up_at else '' }}"></div>
+        <div class="field"><label>Monto (ARS)</label><input type="text" inputmode="numeric" name="amount" value="{{ lead.deal_amount_ars or '' }}" placeholder="Abono mensual + pago único"></div>
+        <button class="btn btn-primary">Guardar</button>
       </form>
+      <p class="muted small" style="margin:10px 0 0">Web: <strong>{{ WEB_STATUS_LABELS.get(lead.web_status, "—") }}</strong>{% if lead.stage_entered_at %} · En esta etapa desde el {{ lead.stage_entered_at|date }}{% endif %}</p>
       {% if not lead.do_not_contact %}
       <form method="post" action="/leads/{{ lead.id }}/no-contactar" data-confirm="¿Marcar como 'no contactar'? Es permanente." style="margin-top:10px">
         <button class="btn btn-red btn-sm">🚫 No contactar nunca</button>
@@ -143,6 +155,54 @@
         <dt>Encontrado</dt><dd>{{ lead.first_seen_at|date }}</dd>
         {% if lead.next_follow_up_at %}<dt>Seguimiento</dt><dd>{{ lead.next_follow_up_at|date }}</dd>{% endif %}
       </dl>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>🤝 Reuniones</h2></div>
+      {% for m in lead.meetings %}
+      <div class="reply">
+        <strong>{{ m.scheduled_at.strftime("%d/%m/%Y %H:%M") }}</strong>
+        {% if m.notes %}<p class="reply-text">{{ m.notes }}</p>{% endif %}
+        {% if m.next_steps %}<p class="small">👉 {{ m.next_steps }}</p>{% endif %}
+      </div>
+      {% else %}<p class="muted small" style="margin-top:0">Sin reuniones registradas.</p>{% endfor %}
+      <form method="post" action="/leads/{{ lead.id }}/reunion" class="stack" style="margin-top:10px">
+        <div class="field"><label>Fecha y hora</label><input type="datetime-local" name="scheduled_at" required></div>
+        <div class="field"><label>Qué se habló</label><textarea name="notes" style="min-height:70px" placeholder="Cómo trabajan hoy, qué necesitan, objeciones…"></textarea></div>
+        <div class="field"><label>Próximos pasos</label><input type="text" name="next_steps" placeholder="Ej.: mandar propuesta del Plan Gestión"></div>
+        <div class="field"><label>Fecha del próximo paso</label><input type="date" name="next_step_at"></div>
+        <button class="btn btn-sm">Registrar reunión</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>📄 Propuestas</h2></div>
+      {% for p in lead.proposals %}
+      <div class="reply">
+        <div class="chips">
+          <a href="/propuestas/{{ p.id }}"><strong>N° {{ "%04d"|format(p.id) }} · {{ p.items[0].titulo }}</strong></a>
+          <span class="chip {{ 'green' if p.status == 'aceptada' else ('red' if p.status == 'rechazada' else ('amber' if p.status == 'enviada' else '')) }}">{{ p.status }}</span>
+        </div>
+        <p class="small" style="margin:4px 0">{% if p.monthly_ars %}$ {{ "{:,}".format(p.monthly_ars).replace(",", ".") }}/mes{% endif %}{% if p.one_time_ars %} · $ {{ "{:,}".format(p.one_time_ars).replace(",", ".") }} único{% endif %}</p>
+        <form method="post" action="/propuestas/{{ p.id }}/estado" class="actions">
+          <select name="status" style="width:auto">{% for s in PROPOSAL_STATUSES %}<option value="{{ s }}" {{ 'selected' if p.status == s }}>{{ s|capitalize }}</option>{% endfor %}</select>
+          <button class="btn btn-sm">Actualizar</button>
+        </form>
+      </div>
+      {% else %}<p class="muted small" style="margin-top:0">Sin propuestas.</p>{% endfor %}
+      {% if prices.planes %}
+      <form method="post" action="/leads/{{ lead.id }}/propuesta" class="stack" style="margin-top:10px">
+        <div class="field"><label>Plan</label>
+          <select name="plan">{% for key, plan in prices.planes.items() %}<option value="{{ key }}" {{ 'selected' if key == lead.recommended_service }}>{{ plan.nombre }}{% if plan.monthly %} — ${{ "{:,}".format(plan.monthly).replace(",", ".") }}/mes{% endif %}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label>Variante (Nexo / Canchas)</label>
+          <select name="variant"><option value="">— Precio base del plan —</option>{% for key, plan in prices.planes.items() %}{% for v in plan.variantes %}<option value="{{ v.nombre }}">{{ plan.nombre }}: {{ v.nombre }} — ${{ "{:,}".format(v.monthly).replace(",", ".") }}/mes</option>{% endfor %}{% endfor %}</select>
+        </div>
+        <div class="field"><label>Pago único (ARS, opcional)</label><input type="text" inputmode="numeric" name="one_time" placeholder="Ej.: desarrollo a medida"></div>
+        <div class="field"><label>Notas para el cliente</label><textarea name="notes" style="min-height:60px"></textarea></div>
+        <button class="btn btn-sm btn-primary">Armar propuesta</button>
+      </form>
+      {% else %}<p class="muted small">Cargá los precios en <code>config/precios.yaml</code> para armar propuestas.</p>{% endif %}
     </div>
 
     <div class="card">
@@ -189,11 +249,13 @@
     </div>
     {% endif %}
 
-    {% if lead.interactions or lead.status_changes %}
+    {% if lead.interactions or lead.status_changes or lead.meetings or lead.proposals %}
     <div class="card">
       <div class="card-head"><h2>Historial</h2></div>
       <ul class="timeline">
         {% for i in lead.interactions %}<li><span>{{ "✉️" if i.direction == "outbound" else "💬" }}</span><span>{{ i.created_at|date }} · {{ "enviado por" if i.direction == "outbound" else "respondió por" }} {{ CHANNEL_LABELS.get(i.channel, i.channel) }}</span></li>{% endfor %}
+        {% for m in lead.meetings %}<li><span>🤝</span><span>{{ m.scheduled_at|date }} · reunión</span></li>{% endfor %}
+        {% for p in lead.proposals %}<li><span>📄</span><span>{{ p.created_at|date }} · propuesta N° {{ "%04d"|format(p.id) }} ({{ p.status }})</span></li>{% endfor %}
         {% for c in lead.status_changes %}<li><span>↻</span><span>{{ c.changed_at|date }} · {{ STATUS_LABELS.get(c.to_status, c.to_status) }}{% if c.note %} <span class="muted">— {{ c.note }}</span>{% endif %}</span></li>{% endfor %}
       </ul>
     </div>

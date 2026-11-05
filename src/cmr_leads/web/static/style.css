@@ -313,3 +313,8 @@ ol li { margin-bottom: 8px; }
 .map-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 .map-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--border); }
 .leaflet-popup-content { font-family: var(--font); font-size: 13px; line-height: 1.5; }
+
+/* Formularios apilados (embudo, reuniones, propuestas) */
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.stack .field { margin: 0; }
+.stack .btn { align-self: flex-start; }

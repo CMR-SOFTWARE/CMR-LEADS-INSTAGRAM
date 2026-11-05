@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Propuesta {{ company }} — {{ lead.label }}</title>
+  <style>
+    :root { --text: #171a26; --muted: #6b7185; --accent: #3b5fbe; --border: #e3e6ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f0f2f7; color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .toolbar { max-width: 820px; margin: 16px auto 0; display: flex; gap: 8px; align-items: center; padding: 0 16px; }
+    .toolbar a, .toolbar button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff; color: var(--text); text-decoration: none; cursor: pointer; }
+    .toolbar button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .toolbar .msg { margin-left: auto; color: var(--muted); font-size: 13px; }
+    .sheet { max-width: 820px; margin: 16px auto 40px; background: #fff; padding: 48px 56px; border-radius: 12px; box-shadow: 0 4px 24px rgba(16,24,40,.08); }
+    header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid var(--accent); padding-bottom: 18px; margin-bottom: 28px; }
+    .brand { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .muted { color: var(--muted); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 28px 0 10px; }
+    ul { margin: 6px 0 0; padding-left: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    td { padding: 10px 0; border-bottom: 1px solid var(--border); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .total td { border-bottom: none; font-size: 17px; }
+    .notes { background: #f7f8fb; border-radius: 8px; padding: 12px 16px; white-space: pre-line; }
+    footer { margin-top: 36px; font-size: 13px; color: var(--muted); }
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .sheet { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+    }
+    @media (max-width: 600px) { .sheet { padding: 24px 20px; } }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="/leads/{{ lead.id }}">← Volver al lead</a>
+    <button class="primary" type="button" onclick="window.print()">Guardar como PDF</button>
+    {% if msg %}<span class="msg">{{ msg }}</span>{% endif %}
+  </div>
+  <div class="sheet">
+    <header>
+      <div>
+        <div class="brand">{{ company }}</div>
+        <div class="muted">Software a medida para negocios de la zona</div>
+      </div>
+      <div style="text-align:right">
+        <div><strong>Propuesta N° {{ "%04d"|format(proposal.id) }}</strong></div>
+        <div class="muted">{{ proposal.created_at.strftime("%d/%m/%Y") }}</div>
+      </div>
+    </header>
+
+    <h1>Para: {{ lead.label }}</h1>
+    {% if lead.address %}<div class="muted">{{ lead.address }}</div>{% endif %}
+
+    {% for item in proposal.items %}
+    <h2>{{ item.titulo }}</h2>
+    <ul>{% for line in item.incluye %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% endfor %}
+
+    <h2>Inversión</h2>
+    <table>
+      {% if proposal.monthly_ars %}<tr><td>Abono mensual</td><td class="num">$ {{ "{:,}".format(proposal.monthly_ars).replace(",", ".") }}</td></tr>{% endif %}
+      {% if proposal.one_time_ars %}<tr><td>Pago único (50% de seña, 50% al entregar)</td><td class="num">$ {{ "{:,}".format(proposal.one_time_ars).replace(",", ".") }}</td></tr>{% endif %}
+    </table>
+
+    {% if proposal.notes %}<h2>Notas</h2><div class="notes">{{ proposal.notes }}</div>{% endif %}
+
+    <footer>{{ conditions }}</footer>
+  </div>
+</body>
+</html>

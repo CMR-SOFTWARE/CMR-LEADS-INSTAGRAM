@@ -49,7 +49,6 @@ from cmr_leads.services import (
     follow_ups_due,
     get_lead,
     leads_query,
-    mark_contacted,
     mark_do_not_contact,
     set_feedback,
     set_status,
@@ -64,12 +63,13 @@ PAGE_SIZE = 40
 
 STATUS_LABELS = {
     LeadStatus.NEW: "Nuevo",
-    LeadStatus.APPROVED: "Aprobado",
+    LeadStatus.APPROVED: "Calificado",
     LeadStatus.REJECTED: "Descartado",
     LeadStatus.CONTACTED: "Contactado",
     LeadStatus.REPLIED: "Respondió",
     LeadStatus.MEETING: "Reunión",
-    LeadStatus.WON: "Cliente",
+    LeadStatus.PROPOSAL: "Propuesta",
+    LeadStatus.WON: "Ganado",
     LeadStatus.LOST: "Perdido",
 }
 # Grupos del mapa: (clave, etiqueta, color, estados que incluye)
@@ -170,6 +170,29 @@ def _search_links(lead: Lead) -> dict[str, str]:
     }
 
 
+def _parse_date(value: str) -> datetime | None:
+    """'2026-11-05' o '2026-11-05T15:30' (inputs date/datetime-local) -> datetime."""
+    value = (value or "").strip()
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _pipeline_context() -> dict:
+    from cmr_leads.domain.enums import ProposalStatus
+    from cmr_leads.sales.pipeline import LOST_REASON_LABELS, STAGE_LABELS, WEB_STATUS_LABELS
+
+    return {
+        "STAGE_LABELS": STAGE_LABELS,
+        "LOST_REASON_LABELS": LOST_REASON_LABELS,
+        "WEB_STATUS_LABELS": WEB_STATUS_LABELS,
+        "PROPOSAL_STATUSES": [s.value for s in ProposalStatus],
+    }
+
+
 def _whatsapp_url(lead: Lead) -> str | None:
     """wa.me con el número si lo tenemos; si no, el link corto que publicó el negocio."""
     if lead.whatsapp_e164:
@@ -253,6 +276,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def scoring_config():
         return load_scoring_config(scoring_path())
+
+    def sales_config():
+        from cmr_leads.sales.config import load_sales_config
+
+        return load_sales_config(settings.sales_config)
+
+    def prices():
+        from cmr_leads.sales.config import load_prices
+
+        return load_prices(settings.prices_config)
+
+    app.state.sales_config = sales_config
+    app.state.prices = prices
 
     @contextmanager
     def db() -> Iterator[tuple[Session, Workspace]]:
@@ -452,6 +488,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 draft=draft,
                 ai_draft=bool((lead.raw_data or {}).get("ai_message")),
                 wa_chat_link=None if lead.whatsapp_e164 else _whatsapp_url(lead),
+                prices=prices(),
+                **_pipeline_context(),
                 ai_configured=settings.ai_configured,
                 active="leads",
                 maxes=config.dimension_max,
@@ -537,23 +575,138 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/leads/{lead_id}/contactado")
     def lead_contacted(
+        request: Request,
         lead_id: int,
         channel: Channel = Form(...),
         message: str = Form(""),
         template: str = Form(""),
     ):
+        from cmr_leads.sales.pipeline import register_contact
+
+        is_fetch = request.headers.get("x-requested-with") == "fetch"
         with db() as (session, ws):
             try:
-                mark_contacted(
+                lead = get_lead(session, ws.id, lead_id)
+                register_contact(
                     session,
-                    get_lead(session, ws.id, lead_id),
+                    lead,
                     channel,
+                    sales_config(),
                     message or None,
                     template.removesuffix(".j2") or None,
                 )
+                next_step = f"{lead.next_step} el {lead.next_follow_up_at:%d/%m}"
+            except LeadError as exc:
+                if is_fetch:
+                    return Response(str(exc), status_code=409)
+                return back(f"/leads/{lead_id}", str(exc))
+        if is_fetch:
+            return Response(status_code=204)
+        return back(f"/leads/{lead_id}", f"Contacto registrado. Próximo paso: {next_step}")
+
+    # ---------------- Embudo: etapa, reuniones, propuestas ----------------
+    @app.post("/leads/{lead_id}/embudo")
+    def lead_pipeline(
+        lead_id: int,
+        status: LeadStatus = Form(...),
+        lost_reason: str = Form(""),
+        next_step: str = Form(""),
+        next_step_at: str = Form(""),
+        amount: str = Form(""),
+    ):
+        from cmr_leads.sales.pipeline import STAGE_LABELS, change_stage
+
+        with db() as (session, ws):
+            lead = get_lead(session, ws.id, lead_id)
+            try:
+                change_stage(session, lead, status, lost_reason=lost_reason or None)
             except LeadError as exc:
                 return back(f"/leads/{lead_id}", str(exc))
-        return back(f"/leads/{lead_id}", "Contacto registrado. Seguimiento en 5 días")
+            if status not in (LeadStatus.WON, LeadStatus.LOST, LeadStatus.REJECTED):
+                lead.next_step = next_step.strip()[:300] or None
+                lead.next_follow_up_at = _parse_date(next_step_at)
+            digits = "".join(ch for ch in amount if ch.isdigit())
+            if digits:
+                lead.deal_amount_ars = int(digits)
+        return back(f"/leads/{lead_id}", f"Guardado: {STAGE_LABELS.get(status, status)}")
+
+    @app.post("/leads/{lead_id}/reunion")
+    def lead_meeting(
+        lead_id: int,
+        scheduled_at: str = Form(...),
+        notes: str = Form(""),
+        next_steps: str = Form(""),
+        next_step_at: str = Form(""),
+    ):
+        from cmr_leads.sales.pipeline import register_meeting
+
+        when = _parse_date(scheduled_at)
+        if when is None:
+            return back(f"/leads/{lead_id}", "Poné la fecha de la reunión")
+        with db() as (session, ws):
+            register_meeting(
+                session,
+                get_lead(session, ws.id, lead_id),
+                when,
+                notes.strip() or None,
+                next_steps.strip() or None,
+                _parse_date(next_step_at),
+            )
+        return back(f"/leads/{lead_id}", "Reunión registrada")
+
+    @app.post("/leads/{lead_id}/propuesta")
+    def lead_proposal(
+        lead_id: int,
+        plan: str = Form(...),
+        variant: str = Form(""),
+        one_time: str = Form(""),
+        notes: str = Form(""),
+    ):
+        from cmr_leads.sales.proposals import ProposalError, create_proposal
+
+        with db() as (session, ws):
+            lead = get_lead(session, ws.id, lead_id)
+            try:
+                proposal = create_proposal(
+                    session, lead, prices(), plan, variant or None, one_time, notes
+                )
+            except ProposalError as exc:
+                return back(f"/leads/{lead_id}", str(exc))
+            proposal_id = proposal.id
+        return back(f"/propuestas/{proposal_id}", "Propuesta creada: revisala y guardala como PDF")
+
+    @app.get("/propuestas/{proposal_id}", response_class=HTMLResponse)
+    def proposal_page(request: Request, proposal_id: int):
+        from cmr_leads.sales.repository import SqlSalesRepository
+
+        with db() as (session, ws):
+            proposal = SqlSalesRepository(session, ws.id).get_proposal(proposal_id)
+            if proposal is None:
+                return back("/leads", f"No existe la propuesta #{proposal_id}")
+            return templates.TemplateResponse(
+                request,
+                "proposal.html",
+                {
+                    "proposal": proposal,
+                    "lead": proposal.lead,
+                    "conditions": prices().condiciones,
+                    "company": settings.company_name,
+                    "msg": request.query_params.get("msg"),
+                },
+            )
+
+    @app.post("/propuestas/{proposal_id}/estado")
+    def proposal_status(proposal_id: int, status: str = Form(...)):
+        from cmr_leads.sales.proposals import set_proposal_status
+        from cmr_leads.sales.repository import SqlSalesRepository
+
+        with db() as (session, ws):
+            proposal = SqlSalesRepository(session, ws.id).get_proposal(proposal_id)
+            if proposal is None:
+                return back("/leads", f"No existe la propuesta #{proposal_id}")
+            set_proposal_status(session, proposal, status)
+            lead_id = proposal.lead_id
+        return back(f"/leads/{lead_id}", "Propuesta actualizada")
 
     # ---------------- Respuestas ----------------
     @app.post("/leads/{lead_id}/respuesta")
