@@ -1,0 +1,91 @@
+/*
+ * Design tokens de CMR Software Solutions (fuente: .claude/skills/cmr-ui/SKILL.md).
+ * ÚNICO lugar con colores, degradés, tipografías, radios, sombras y tiempos de animación.
+ * Los componentes usan solo var(--…): nada de hex sueltos fuera de este archivo.
+ */
+:root {
+  color-scheme: light;
+
+  /* Colores principales */
+  --cmr-navy: #0A1F44;
+  --cmr-gris-claro: #E8ECF2;
+  --cmr-azul: #2E5EFF;
+  --cmr-azul-suave: #6699FF;      /* solo sobre navy, íconos o bordes: 2.78 sobre blanco */
+  --cmr-turquesa: #1FA59C;        /* íconos, bordes, pills grandes: 3.03 sobre blanco */
+
+  /* Colores de apoyo */
+  --cmr-turquesa-claro: #2CC4B4;
+  --cmr-fondo-claro: #F6F8FB;
+  --cmr-navy-profundo: #081A3A;
+  --cmr-navy-medio: #0D2752;
+  --cmr-texto-1: #56688A;         /* 5.61 sobre blanco */
+  --cmr-texto-2: #3B4D6E;         /* 8.49 sobre blanco */
+  --cmr-texto-sobre-navy: #C9D3E6;
+  --cmr-fondo-icono: #EAF0FF;
+  --cmr-blanco: #FFFFFF;
+
+  /* Variantes accesibles (agregadas tras medir contraste WCAG AA) */
+  --cmr-turquesa-texto: #14806F;  /* texto chico turquesa / fin del degradé de botones: 4.83 */
+  --cmr-nexo-texto: #4F46E5;      /* texto chico violeta Nexo: 6.29 */
+
+  /* Estados */
+  --cmr-ok: #0F6E62;              /* 5.43 sobre --cmr-ok-suave, 6.13 sobre blanco */
+  --cmr-ok-suave: #E3F5F2;
+  --cmr-alerta: #A15C07;          /* 4.76 sobre --cmr-alerta-suave */
+  --cmr-alerta-suave: #FFF4E0;
+  --cmr-error: #C42B2B;           /* 5.63 sobre blanco, 4.93 sobre su fondo */
+  --cmr-error-suave: #FDECEC;
+
+  /* Submarcas (badges de plan sugerido) */
+  --nexo-violeta: #6366F1;
+  --nexo-violeta-claro: #A5B4FC;
+  --nexo-fondo: #EEF0FF;
+  --canchas-verde: #307D24;       /* 5.14 sobre blanco */
+  --canchas-verde-medio: #4A973C;
+  --canchas-verde-claro: #98E484;
+  --canchas-fondo: #ECF8E8;
+
+  /* Degradés de marca */
+  --cmr-degrade: linear-gradient(120deg, var(--cmr-azul), var(--cmr-turquesa));
+  --cmr-degrade-boton: linear-gradient(120deg, var(--cmr-azul), var(--cmr-turquesa-texto));
+  --cmr-degrade-navy: linear-gradient(120deg, var(--cmr-azul-suave), var(--cmr-turquesa-claro));
+  --cmr-degrade-fondo-claro: linear-gradient(180deg, var(--cmr-fondo-claro), var(--cmr-gris-claro));
+  --cmr-degrade-fondo-navy: linear-gradient(160deg, var(--cmr-navy-medio), var(--cmr-navy-profundo));
+  /* Luces difusas: SOLO header, login y estados vacíos (nunca detrás de datos densos) */
+  --cmr-luces: radial-gradient(60% 80% at 100% 0%, rgba(46, 94, 255, .28), transparent 70%),
+    radial-gradient(55% 70% at 0% 100%, rgba(31, 165, 156, .22), transparent 70%);
+
+  /* Tipografía */
+  --font-cmr: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-nexo: "Inter", system-ui, sans-serif;
+  --font-canchas: "Rajdhani", system-ui, sans-serif;
+  --peso-titulo: 700;
+  --peso-boton: 600;
+  --peso-texto: 500;
+  --tracking-titulo: -0.02em;
+  --tracking-pill: 0.08em;
+
+  /* Radios y sombras */
+  --radio-chico: 10px;
+  --radio: 18px;
+  --radio-grande: 24px;
+  --radio-pill: 999px;
+  --sombra: 0 1px 2px rgba(10, 31, 68, .05), 0 8px 24px rgba(10, 31, 68, .08);
+  --sombra-hover: 0 2px 4px rgba(10, 31, 68, .06), 0 14px 32px rgba(10, 31, 68, .12);
+  --borde-navy: 1px solid rgba(201, 211, 230, .18);
+
+  /* Animación: 150–300 ms, easing suave, solo transform y opacity */
+  --dur-rapida: 150ms;
+  --dur: 220ms;
+  --dur-lenta: 300ms;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --ease-salida: cubic-bezier(.4, 0, .2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-rapida: 0ms;
+    --dur: 0ms;
+    --dur-lenta: 0ms;
+  }
+}
