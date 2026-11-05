@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 from cmr_leads.db.models import Lead, LeadSource, Workspace, utcnow
 from cmr_leads.domain.schemas import RawProfile, SourceRecord
 from cmr_leads.enrichment.contact_extractor import Contacts, extract_from_text
-from cmr_leads.pipeline.dedup import find_matching_leads, lead_identifiers, sync_identifiers
+from cmr_leads.pipeline.dedup import (
+    find_matching_leads,
+    find_nearby_same_name,
+    lead_identifiers,
+    sync_identifiers,
+)
 from cmr_leads.pipeline.normalize import (
     clean_str,
     is_aggregator_domain,
@@ -115,6 +120,8 @@ def ingest(
     probe = Lead(workspace_id=workspace.id)
     apply_profile(probe, record.profile, country)
     matches = find_matching_leads(session, workspace.id, lead_identifiers(probe))
+    if not matches and (nearby := find_nearby_same_name(session, workspace.id, probe)):
+        matches = [nearby]
 
     created = not matches
     if created:

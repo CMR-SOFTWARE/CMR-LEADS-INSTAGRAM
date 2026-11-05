@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     default_country: str = "AR"
     scoring_config: Path = Path("config/scoring.yaml")
     catalog_path: Path = Path("config/catalogo.md")
+    sales_config: Path = Path("config/ventas.yaml")
+    prices_config: Path = Path("config/precios.yaml")
+    # Backup diario automático de la base (al abrir la app). Podés apuntarlo a Drive/OneDrive.
+    backup_dir: Path = Path("data/backups")
+    backup_keep_days: int = 30
 
     meta_access_token: str | None = None
     instagram_business_account_id: str | None = None

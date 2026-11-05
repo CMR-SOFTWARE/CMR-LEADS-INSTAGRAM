@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 from cmr_leads.db.models import Interaction, Lead, LeadSource, StatusChange, utcnow
 from cmr_leads.domain.enums import Channel, LeadStatus
 
-FOLLOW_UP_DAYS = 5
+FOLLOW_UP_DAYS = 3
 CONTACTABLE_STATUSES = {
     LeadStatus.APPROVED,
     LeadStatus.CONTACTED,
     LeadStatus.REPLIED,
     LeadStatus.MEETING,
+    LeadStatus.PROPOSAL,
 }
 
 
@@ -59,6 +60,7 @@ def set_status(session: Session, lead: Lead, status: LeadStatus, note: str | Non
         return
     lead.status_changes.append(StatusChange(from_status=lead.status, to_status=status, note=note))
     lead.status = status
+    lead.stage_entered_at = utcnow()
     lead.updated_at = utcnow()
     session.flush()
 

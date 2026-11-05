@@ -25,6 +25,7 @@ def client(tmp_path):
         database_url=url,
         scoring_config=config_dir / "scoring.yaml",
         website_fetch_enabled=False,
+        backup_dir=tmp_path / "backups",
     )
     app = create_app(settings)
     with TestClient(app, base_url="http://testserver") as test_client:
@@ -295,3 +296,22 @@ def test_map_shows_leads_by_status_and_locates_missing(client, monkeypatch):
     assert "1 locales ubicados" in _msg(response)
     assert _lead(client, google_place_id="m2").longitude == -60.21
     assert "Gym Sur" in client.get("/mapa").text
+
+
+def test_daily_backup_runs_once_per_day(tmp_path):
+    from datetime import date
+
+    from cmr_leads.sales.backup import daily_backup
+
+    db_file = tmp_path / "x.db"
+    run_migrations(f"sqlite:///{db_file}")
+    url = f"sqlite:///{db_file}"
+    first = daily_backup(url, tmp_path / "b", keep=2, today=date(2026, 11, 1))
+    assert first and first.exists()
+    assert daily_backup(url, tmp_path / "b", keep=2, today=date(2026, 11, 1)) is None
+    daily_backup(url, tmp_path / "b", keep=2, today=date(2026, 11, 2))
+    daily_backup(url, tmp_path / "b", keep=2, today=date(2026, 11, 3))
+    assert sorted(p.name for p in (tmp_path / "b").iterdir()) == [
+        "cmr_leads_2026-11-02.db",
+        "cmr_leads_2026-11-03.db",
+    ]

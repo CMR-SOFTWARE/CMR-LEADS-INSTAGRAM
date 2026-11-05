@@ -8,6 +8,7 @@ class LeadStatus(StrEnum):
     CONTACTED = "contacted"
     REPLIED = "replied"
     MEETING = "meeting"
+    PROPOSAL = "proposal"
     WON = "won"
     LOST = "lost"
 
@@ -20,6 +21,7 @@ class SourceType(StrEnum):
     MANUAL = "manual"
     CSV_IMPORT = "csv_import"
     GOOGLE_PLACES = "google_places"
+    OSM = "osm"
     INSTAGRAM_DM = "instagram_dm"
 
 
@@ -30,6 +32,7 @@ class IdentifierType(StrEnum):
     DOMAIN = "domain"
     EMAIL = "email"
     PLACE_ID = "place_id"
+    NAME_ADDRESS = "name_address"
 
 
 class EnrichmentState(StrEnum):
@@ -52,3 +55,24 @@ class Channel(StrEnum):
     PHONE = "phone"
     IN_PERSON = "in_person"
     OTHER = "other"
+
+
+class LostReason(StrEnum):
+    PRICE = "precio"
+    TIMING = "timing"
+    NOT_INTERESTED = "no_interesa"
+    CHOSE_OTHER = "eligio_otro"
+    NO_RESPONSE = "sin_respuesta"
+
+
+class WebStatus(StrEnum):
+    NONE = "no"
+    OK = "si"
+    OLD = "vieja"
+
+
+class ProposalStatus(StrEnum):
+    DRAFT = "borrador"
+    SENT = "enviada"
+    ACCEPTED = "aceptada"
+    REJECTED = "rechazada"

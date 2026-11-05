@@ -201,6 +201,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        from cmr_leads.sales.backup import daily_backup
+
+        try:
+            daily_backup(settings.database_url, settings.backup_dir, settings.backup_keep_days)
+        except OSError:
+            import logging
+
+            logging.getLogger(__name__).exception("No se pudo hacer el backup diario")
         if settings.auto_search_enabled and settings.google_places_configured:
             import threading
 

@@ -1,0 +1,74 @@
+# Precios para armar propuestas (ARS). Editá este archivo cuando cambien y reiniciá la app.
+# monthly: abono mensual · one_time: pago único (seña 50% / 50% al entregar).
+
+planes:
+  pagina_web:
+    nombre: Plan Web
+    monthly: 80000
+    incluye:
+      - Sitio web profesional a medida
+      - Diseño responsive (celular y compu)
+      - Dominio, hosting y certificado SSL
+      - Botón de WhatsApp integrado
+      - Soporte técnico
+  mejora_web:
+    nombre: Renovación de web (Plan Web)
+    monthly: 80000
+    incluye:
+      - Rediseño del sitio actual, adaptado al celular
+      - Dominio, hosting y certificado SSL
+      - Botón de WhatsApp integrado
+      - Soporte técnico
+  tienda_online:
+    nombre: Plan Gestión — tienda
+    monthly: 140000
+    incluye:
+      - Todo lo del Plan Web
+      - Catálogo con fotos, precios y stock
+      - Carrito y pedidos online
+      - Panel de administración propio
+  sistema_turnos:
+    nombre: Plan Gestión — turnos
+    monthly: 140000
+    incluye:
+      - Todo lo del Plan Web
+      - Turnos online con seña y confirmación por WhatsApp
+      - Sección para que los clientes vean sus turnos
+      - Panel de administración propio
+  sistema_a_medida:
+    nombre: Sistema a medida
+    monthly: 140000
+    incluye:
+      - Sistema de gestión según lo que necesite el negocio
+      - Panel de administración propio
+  cmr_nexo:
+    nombre: CMR Nexo — turnos online
+    monthly: 10000
+    variantes:
+      - {nombre: Inicial (1 profesional), monthly: 10000}
+      - {nombre: Profesional (hasta 3), monthly: 17500}
+      - {nombre: Max (ilimitados), monthly: 30000}
+    incluye:
+      - Turnos online las 24 hs
+      - Confirmación por WhatsApp
+      - Agenda, caja, estadísticas e historial de clientes
+  cmr_canchas:
+    nombre: CMR Canchas — reservas
+    monthly: 50000
+    variantes:
+      - {nombre: Inicial (hasta 2 canchas), monthly: 50000}
+      - {nombre: Estándar (hasta 5), monthly: 80000}
+      - {nombre: Max (hasta 10), monthly: 100000}
+    incluye:
+      - Reservas online las 24 hs
+      - Confirmación al instante
+      - Panel de administración y WhatsApp integrado
+
+# Agregados opcionales que se pueden sumar a cualquier propuesta (landing, app móvil, etc.).
+# Cargalos con su precio real cuando los tengas definidos, por ejemplo:
+#   - {nombre: Landing page, one_time: 150000}
+extras: []
+
+condiciones: >-
+  Precios en pesos argentinos. Proyectos únicos: 50% de seña para comenzar y 50% al entregar.
+  Propuesta válida por 15 días.

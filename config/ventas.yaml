@@ -1,0 +1,21 @@
+# Reglas del embudo de ventas. Editá este archivo y reiniciá la app.
+
+# Seguimientos automáticos después del primer mensaje (días sin respuesta).
+follow_up_days: [3, 7]
+# Si después del último seguimiento pasan estos días sin respuesta, se sugiere cerrarlo
+# como "Perdido — sin respuesta".
+close_after_days: 14
+
+# Días máximos en cada etapa antes de marcar el negocio como "trabado".
+stuck_days:
+  approved: 3      # calificado sin contactar
+  contacted: 14
+  replied: 3
+  meeting: 7
+  proposal: 10
+
+# Cuántos leads muestra el briefing diario en "A quién escribirle hoy".
+briefing_size: 8
+
+# Cola de emails: máximo de emails por día (los aprobás vos y los mandás desde tu mail).
+email_daily_limit: 20

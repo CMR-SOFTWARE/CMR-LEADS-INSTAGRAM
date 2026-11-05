@@ -101,6 +101,12 @@ class Lead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
     contacted_at: Mapped[datetime | None] = mapped_column(DateTime)
     next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Embudo de ventas
+    next_step: Mapped[str | None] = mapped_column(String(300))
+    stage_entered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    lost_reason: Mapped[str | None] = mapped_column(String(40))
+    deal_amount_ars: Mapped[int | None] = mapped_column(Integer)
+    web_status: Mapped[str | None] = mapped_column(String(10))
 
     identifiers: Mapped[list["LeadIdentifier"]] = relationship(
         back_populates="lead", cascade="all, delete-orphan"
@@ -113,6 +119,12 @@ class Lead(Base):
     )
     status_changes: Mapped[list["StatusChange"]] = relationship(
         back_populates="lead", cascade="all, delete-orphan", order_by="StatusChange.changed_at"
+    )
+    meetings: Mapped[list["Meeting"]] = relationship(
+        back_populates="lead", cascade="all, delete-orphan", order_by="Meeting.scheduled_at"
+    )
+    proposals: Mapped[list["Proposal"]] = relationship(
+        back_populates="lead", cascade="all, delete-orphan", order_by="Proposal.created_at"
     )
 
     @property
@@ -188,6 +200,40 @@ class StatusChange(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     lead: Mapped[Lead] = relationship(back_populates="status_changes")
+
+
+class Meeting(Base):
+    """Reunión o visita con un lead: cuándo, qué se habló y cómo sigue."""
+
+    __tablename__ = "meetings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    next_steps: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    lead: Mapped[Lead] = relationship(back_populates="meetings")
+
+
+class Proposal(Base):
+    """Propuesta en ARS armada desde config/precios.yaml."""
+
+    __tablename__ = "proposals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    plan: Mapped[str] = mapped_column(String(40))
+    items: Mapped[list[Any]] = mapped_column(JSON)
+    monthly_ars: Mapped[int] = mapped_column(Integer, default=0)
+    one_time_ars: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="borrador")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    lead: Mapped[Lead] = relationship(back_populates="proposals")
 
 
 class ApiUsage(Base):

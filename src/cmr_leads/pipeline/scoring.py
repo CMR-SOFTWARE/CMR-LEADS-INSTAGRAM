@@ -364,6 +364,9 @@ def apply_score(lead: Lead, config: ScoringConfig) -> ScoreResult:
     lead.is_business = result.is_business
     lead.is_local = result.is_local
     lead.business_type = result.business_type
+    from cmr_leads.sales.pipeline import web_status_of
+
+    lead.web_status = web_status_of(lead)
     # Si la IA ya eligió el plan con más chances de venta, manda sobre las reglas.
     ai_offer = (lead.raw_data or {}).get("ai_offer") or {}
     lead.recommended_service = ai_offer.get("product") or result.recommended_service

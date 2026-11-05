@@ -172,3 +172,54 @@ def whatsapp_chat_link(*texts: str | None) -> str | None:
         if text and (match := WHATSAPP_CHAT_LINK_RE.search(text)):
             return match.group(0)
     return None
+
+
+_STREET_WORDS = {
+    "avenida": "av",
+    "av.": "av",
+    "avda": "av",
+    "calle": "",
+    "bv": "bv",
+    "boulevard": "bv",
+    "bulevar": "bv",
+    "pasaje": "pje",
+    "psje": "pje",
+    "ruta": "ruta",
+    "nro": "",
+    "n°": "",
+    "no": "",
+}
+_BUSINESS_NOISE = {
+    "la",
+    "el",
+    "los",
+    "las",
+    "de",
+    "del",
+    "y",
+    "&",
+    "-",
+    "|",
+    "sn",
+    "san",
+    "nicolas",
+}
+
+
+def address_key(address: str | None) -> str | None:
+    """'Av. Savio 1234, San Nicolás' -> 'av savio 1234'. Calle + número, sin ciudad ni provincia."""
+    if not address:
+        return None
+    first = normalize_text(address.split(",")[0])
+    words = [_STREET_WORDS.get(w, w) for w in re.split(r"\s+", first)]
+    text = " ".join(w for w in words if w)
+    return text if re.search(r"\d", text) else None
+
+
+def name_key(name: str | None) -> str | None:
+    """Nombre comparable: sin acentos, signos ni palabras de relleno."""
+    if not name:
+        return None
+    words = re.findall(r"[a-z0-9]+", normalize_text(name))
+    words = [w for w in words if w not in _BUSINESS_NOISE]
+    return " ".join(words) or None

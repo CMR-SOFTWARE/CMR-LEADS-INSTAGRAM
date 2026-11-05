@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from cmr_leads.db.models import Lead, LeadIdentifier
 from cmr_leads.domain.enums import IdentifierType
-from cmr_leads.pipeline.normalize import is_aggregator_domain, normalize_text, phone_key
+from cmr_leads.pipeline.normalize import (
+    address_key,
+    is_aggregator_domain,
+    name_key,
+    normalize_text,
+    phone_key,
+)
 
 # Campos que se completan al fusionar si el lead que se conserva no los tiene.
 MERGEABLE_FIELDS = (
@@ -54,7 +60,38 @@ def lead_identifiers(lead: Lead) -> set[tuple[str, str]]:
         idents.add((IdentifierType.DOMAIN, lead.website_domain))
     if lead.email:
         idents.add((IdentifierType.EMAIL, lead.email))
+    # Mismo negocio en distintas fuentes (Google, OSM, CSV): nombre + calle y número.
+    name, address = name_key(lead.display_name), address_key(lead.address)
+    if name and address:
+        idents.add((IdentifierType.NAME_ADDRESS, f"{name}|{address}"[:200]))
     return idents
+
+
+NEARBY_DEGREES = 0.0015  # ~150 m
+NEARBY_NAME_SIMILARITY = 85
+
+
+def find_nearby_same_name(session: Session, workspace_id: int, probe: Lead) -> Lead | None:
+    """Respaldo cuando las fuentes escriben distinto la dirección: mismo nombre a menos de ~150 m."""
+    name = name_key(probe.display_name)
+    if not name or probe.latitude is None or probe.longitude is None:
+        return None
+    candidates = session.scalars(
+        select(Lead).where(
+            Lead.workspace_id == workspace_id,
+            Lead.latitude.between(probe.latitude - NEARBY_DEGREES, probe.latitude + NEARBY_DEGREES),
+            Lead.longitude.between(
+                probe.longitude - NEARBY_DEGREES, probe.longitude + NEARBY_DEGREES
+            ),
+        )
+    )
+    best, best_score = None, 0.0
+    for lead in candidates:
+        other = name_key(lead.display_name)
+        score = fuzz.token_set_ratio(name, other) if other else 0
+        if score >= NEARBY_NAME_SIMILARITY and score > best_score:
+            best, best_score = lead, score
+    return best
 
 
 def find_matching_leads(
