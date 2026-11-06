@@ -1,6 +1,7 @@
 """Genera un BORRADOR de mensaje para revisión humana. Nunca envía nada."""
 
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -136,6 +137,22 @@ def render_from_config(lead: Lead, settings: Settings) -> tuple[str, str] | None
 
     name = f"{plan}/{lead.business_type}" if lead.business_type in by_rubro else plan
     return " ".join(template.split()).format_map(_Safe(values)), name
+
+
+def follow_up_message(lead: Lead, settings: Settings, number: int) -> str:
+    """Mensaje de seguimiento (1 = día 3, 2 = día 7) desde config/plantillas.yaml."""
+    config = _load_yaml_templates(settings.templates_path)
+    texts = config.get("seguimientos") or {}
+    template = texts.get(number) or texts.get(str(number)) or texts.get(1) or ""
+    if not template:
+        return f"Hola, ¿cómo andan? Les escribí hace unos días por {lead.display_name or 'su negocio'}."
+    values = {
+        "nombre": lead.display_name or "su negocio",
+        "rubro": BUSINESS_TYPE_LABELS.get(lead.business_type or "", "su rubro"),
+        "empresa": settings.company_name,
+        "ciudad": settings.company_city,
+    }
+    return " ".join(template.split()).format_map(defaultdict(str, values))
 
 
 def generate_message(lead: Lead, settings: Settings) -> MessageDraft:

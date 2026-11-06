@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% from "_macros.html" import avatar, links, ic, icon %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Mi jornada</h1>
+    <p>El piloto te lleva paso a paso. Lo automático lo podés deshacer, y siempre podés hacerlo a mano desde la ficha.</p>
+  </div>
+</div>
+
+<nav class="stepper" aria-label="Pasos de la jornada">
+  {% for key, label, hint in steps %}
+  <a class="step {{ 'is-current' if key == step }} {{ 'is-empty' if not journey.count(key) }}" href="/jornada?paso={{ key }}{{ '&skip=' ~ skip if skip }}" {{ 'aria-current="step"'|safe if key == step }}>
+    <span class="step-num">{{ loop.index }}</span>
+    <span class="step-text"><strong>{{ label }}</strong><span>{{ journey.count(key) }} pendiente{{ 's' if journey.count(key) != 1 }}</span></span>
+  </a>
+  {% endfor %}
+</nav>
+
+{% if not step %}
+<div class="card empty-state">
+  <span class="ico-box">{{ ic("circle-check") }}</span>
+  <h2>Terminaste la jornada</h2>
+  <p class="muted">No queda nada pendiente. La próxima vez que abras la app busco negocios nuevos y armo la lista.</p>
+  <a class="btn" href="/ventas">Ver cómo vienen las ventas</a>
+</div>
+{% elif lead is none %}
+<div class="card empty-state">
+  <span class="ico-box">{{ ic("check") }}</span>
+  <h2>Nada en este paso</h2>
+  <p class="muted">Pasá al siguiente paso de arriba.</p>
+</div>
+{% else %}
+{% set current = (steps | selectattr(0, "equalto", step) | first) %}
+<section class="card journey-card" aria-labelledby="journey-title">
+  <p class="step-hint">{{ current[2] }}</p>
+  <div class="journey-head">
+    {{ avatar(lead) }}
+    <div style="min-width:0">
+      <h2 id="journey-title">{{ lead.label }}</h2>
+      <p class="muted small" style="margin:2px 0 0">{{ lead.category or "Sin rubro" }}{% if lead.city %} · {{ lead.city }}{% endif %}</p>
+    </div>
+    <a class="btn btn-sm" href="/leads/{{ lead.id }}">{{ ic("external-link") }} Hacerlo a mano</a>
+  </div>
+
+  {% set offer = (lead.raw_data or {}).get("ai_offer") %}
+  <div class="journey-facts">
+    <div><span class="muted small">Qué ofrecerle</span><strong>{{ offer.offer if offer else SERVICE_LABELS.get(lead.recommended_service, "—") }}</strong>{% if offer %}<span class="chip green">{{ offer.probability }}% de chance</span>{% endif %}</div>
+    <div><span class="muted small">Por qué</span><span>{{ offer.reason if offer else ((lead.score_breakdown or [])[:2] | map(attribute="reason") | join(" · ")) or "—" }}</span></div>
+    {% if item.detail is defined %}<div><span class="muted small">Seguimiento</span><span>{{ item.detail }}{% if item.days %} · vencido hace {{ item.days }} d{% endif %}</span></div>{% endif %}
+  </div>
+  <div style="margin:12px 0">{{ links(lead, compact=true) }}</div>
+
+  {% if step == "revisar" %}
+  <div class="actions">
+    <form method="post" action="/revisar/{{ lead.id }}" class="inline">
+      <input type="hidden" name="action" value="aprobar"><input type="hidden" name="next" value="/jornada?paso=revisar{{ '&skip=' ~ skip if skip }}">
+      <button class="btn btn-primary">{{ ic("check") }} Calificar</button>
+    </form>
+    <form method="post" action="/revisar/{{ lead.id }}" class="actions">
+      <input type="hidden" name="action" value="descartar"><input type="hidden" name="next" value="/jornada?paso=revisar{{ '&skip=' ~ skip if skip }}">
+      <label class="sr-only" for="motivo">Motivo</label>
+      <select id="motivo" name="reason" style="width:auto">{% for key, label in FEEDBACK_REASONS.items() if key != "buen_perfil" %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+      <button class="btn">{{ ic("x") }} Descartar</button>
+    </form>
+  </div>
+
+  {% elif step in ("enviar", "seguimiento") %}
+  <div data-message>
+    <label for="msg">Mensaje (editalo si querés)</label>
+    <textarea id="msg">{{ message }}</textarea>
+    <div class="actions" style="margin-top:12px">
+      {% if lead.whatsapp_e164 %}
+      <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
+      {% elif wa_url %}
+      <a class="btn btn-whatsapp" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" href="{{ wa_url }}" target="_blank" rel="noopener">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
+      {% endif %}
+      {% if lead.instagram_username %}
+      <a class="btn btn-instagram" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="instagram_dm" href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ ic("instagram") }} Copiar y abrir DM</a>
+      {% endif %}
+      <button class="btn" type="button" data-copy>{{ ic("copy") }} Copiar</button>
+    </div>
+    <p class="muted small" style="margin:8px 0 0">Al abrir WhatsApp o Instagram queda registrado solo y pasás al siguiente.</p>
+  </div>
+
+  {% elif step == "responder" %}
+  {% set last = (lead.interactions | selectattr("direction", "equalto", "inbound") | list | last) %}
+  {% if last %}<p class="reply-text">“{{ last.message }}”</p>{% endif %}
+  <p><strong>Sugerencia:</strong> {{ lead.next_step or "Respondele hoy" }}</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="/leads/{{ lead.id }}#propuestas">{{ ic("file-text") }} Armar propuesta</a>
+    <a class="btn" href="/leads/{{ lead.id }}#reuniones">{{ ic("calendar") }} Registrar reunión</a>
+  </div>
+  <form method="post" action="/leads/{{ lead.id }}/respuesta" style="margin-top:14px">
+    <input type="hidden" name="next" value="/jornada?paso=responder">
+    <label for="resp">¿Te volvió a escribir? Pegá la respuesta</label>
+    <textarea id="resp" name="text" style="min-height:70px" placeholder="Ej.: Dale, ¿cuándo lo vemos?…"></textarea>
+    <button class="btn btn-sm" style="margin-top:8px">Registrar respuesta</button>
+  </form>
+
+  {% elif step == "cerrar" %}
+  <p><strong>Próximo paso:</strong> {{ lead.next_step or "Definí cómo sigue" }}</p>
+  <div class="actions"><a class="btn btn-primary" href="/leads/{{ lead.id }}">{{ ic("handshake") }} Ir a la ficha para cerrarlo</a></div>
+  {% endif %}
+
+  {% if step in ("enviar", "seguimiento") %}
+  <form method="post" action="/leads/{{ lead.id }}/respuesta" class="journey-reply">
+    <input type="hidden" name="next" value="/jornada?paso={{ step }}">
+    <label for="resp2">¿Ya te contestó? Pegá su respuesta y el piloto lo mueve de etapa</label>
+    <textarea id="resp2" name="text" style="min-height:60px" placeholder="Ej.: Hola! ¿Cuánto sale?…"></textarea>
+    <button class="btn btn-sm" style="margin-top:8px">Registrar respuesta</button>
+  </form>
+  {% endif %}
+
+  <div class="journey-foot">
+    <a class="btn btn-ghost btn-sm" href="/jornada?paso={{ step }}&skip={{ (skip ~ ',' if skip) ~ lead.id }}">Saltear por hoy</a>
+    <span class="muted small">{{ journey.count(step) }} en este paso</span>
+  </div>
+</section>
+{% endif %}
+
+<section class="card" style="margin-top:16px" aria-labelledby="pilot-title">
+  <div class="card-head"><h2 id="pilot-title"><span class="ico-box">{{ ic("sparkles") }}</span> Lo que hizo el piloto hoy</h2></div>
+  {% for t in touched %}
+  <div class="reply-row">
+    <a href="/leads/{{ t.id }}"><strong>{{ t.label }}</strong></a>
+    {% if (auto_flag(t, AUTO_CLOSED) or "").startswith(today) %}<span class="chip red">Cerrado: sin respuesta</span>{% else %}<span class="chip accent">Calificado solo</span>{% endif %}
+    <form method="post" action="/jornada/deshacer/{{ t.id }}" class="inline" style="margin-left:auto"><button class="btn btn-sm">Deshacer</button></form>
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">Todavía nada hoy. Califico solo a los negocios con más chances y cierro a quien no contestó después de los seguimientos (lo podés cambiar en <code>config/ventas.yaml</code>).</p>
+  {% endfor %}
+</section>
+{% endblock %}

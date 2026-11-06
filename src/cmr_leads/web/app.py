@@ -609,6 +609,82 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return Response(status_code=204)
         return back(f"/leads/{lead_id}", f"Contacto registrado. Próximo paso: {next_step}")
 
+    def run_pilot(session: Session, ws: Workspace):
+        from cmr_leads.sales.autopilot import run_autopilot
+        from cmr_leads.sales.repository import SqlSalesRepository
+
+        result = run_autopilot(
+            session, SqlSalesRepository(session, ws.id), sales_config(), utcnow()
+        )
+        session.commit()
+        return result
+
+    # ---------------- Mi jornada (piloto) ----------------
+    @app.get("/jornada", response_class=HTMLResponse)
+    def journey(request: Request, paso: str = "", skip: str = ""):
+        from cmr_leads.messaging.generator import follow_up_message
+        from cmr_leads.sales.autopilot import (
+            AUTO_CLOSED,
+            AUTO_QUALIFIED,
+            STEPS,
+            auto_flag,
+            build_journey,
+        )
+        from cmr_leads.sales.repository import SqlSalesRepository
+
+        skipped = {int(x) for x in skip.split(",") if x.isdigit()}
+        now = utcnow()
+        with db() as (session, ws):
+            run_pilot(session, ws)
+            repo = SqlSalesRepository(session, ws.id)
+            journey_ = build_journey(repo, sales_config(), now, skipped)
+            step = paso if paso in dict((k, k) for k, *_ in STEPS) else journey_.current
+            queue = journey_.queues.get(step) or [] if step else []
+            item = queue[0] if queue else None
+            lead = getattr(item, "lead", item)
+            message = None
+            if lead is not None and step == "enviar":
+                message = (lead.raw_data or {}).get("ai_message") or generate_message(
+                    lead, settings
+                ).text
+            elif lead is not None and step == "seguimiento":
+                sent = sum(1 for i in lead.interactions if i.direction == "outbound")
+                message = follow_up_message(lead, settings, min(sent, 2))
+            today = now.date().isoformat()
+            touched = [
+                lead_
+                for lead_ in repo.all_leads()
+                if (auto_flag(lead_, AUTO_QUALIFIED) or "").startswith(today)
+                or (auto_flag(lead_, AUTO_CLOSED) or "").startswith(today)
+            ]
+            return render(
+                request,
+                "journey.html",
+                active="journey",
+                steps=STEPS,
+                journey=journey_,
+                step=step,
+                item=item,
+                lead=lead,
+                message=message,
+                skip=",".join(str(i) for i in sorted(skipped)),
+                touched=touched,
+                today=today,
+                AUTO_QUALIFIED=AUTO_QUALIFIED,
+                AUTO_CLOSED=AUTO_CLOSED,
+                auto_flag=auto_flag,
+                wa_url=_whatsapp_url(lead) if lead is not None else None,
+                **_pipeline_context(),
+            )
+
+    @app.post("/jornada/deshacer/{lead_id}")
+    def journey_undo(lead_id: int):
+        from cmr_leads.sales.autopilot import undo
+
+        with db() as (session, ws):
+            msg = undo(session, get_lead(session, ws.id, lead_id), utcnow())
+        return back("/jornada", msg)
+
     # ---------------- Equipo de ventas ----------------
     @app.get("/ventas", response_class=HTMLResponse)
     def sales_dashboard(request: Request, periodo: str = "30d"):
@@ -785,7 +861,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ---------------- Respuestas ----------------
     @app.post("/leads/{lead_id}/respuesta")
-    def lead_reply(lead_id: int, text: str = Form(""), channel: Channel = Form(Channel.WHATSAPP)):
+    def lead_reply(
+        lead_id: int,
+        text: str = Form(""),
+        channel: Channel = Form(Channel.WHATSAPP),
+        next: str = Form(""),
+    ):
         from cmr_leads.replies.classifier import CATEGORIES
         from cmr_leads.replies.service import build_classifier, register_reply
 
@@ -797,7 +878,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if interaction is None:
                 return back(f"/leads/{lead_id}", "Esa respuesta ya estaba registrada")
             category = CATEGORIES.get(interaction.outcome, interaction.outcome)
-        return back(f"/leads/{lead_id}", f"Respuesta registrada: {category}")
+        return back(safe_next(next, f"/leads/{lead_id}"), f"Respuesta registrada: {category}")
 
     @app.post("/leads/{lead_id}/chat-whatsapp")
     def lead_whatsapp_chat(lead_id: int, file: UploadFile, my_name: str = Form("")):
@@ -1009,7 +1090,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/revisar/{lead_id}")
     def review_action(
-        lead_id: int, action: str = Form(...), reason: str = Form(""), skip: str = Form("")
+        lead_id: int,
+        action: str = Form(...),
+        reason: str = Form(""),
+        skip: str = Form(""),
+        next: str = Form(""),
     ):
         with db() as (session, ws):
             lead = get_lead(session, ws.id, lead_id)
@@ -1026,7 +1111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 skip = ",".join(filter(None, [skip, str(lead_id)]))
                 msg = None
         url = "/revisar" + (f"?skip={skip}" if skip else "")
-        return back(url, msg)
+        return back(safe_next(next, url), msg)
 
     # ---------------- Algoritmo ----------------
     @app.get("/algoritmo", response_class=HTMLResponse)
@@ -1333,6 +1418,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     enrich_and_score(session, ws, limit=min(result.created, 60))
                     session.commit()
                     analyze_offers(session, ws, limit=settings.auto_offer_per_day)
+                run_pilot(session, ws)
         except Exception:  # noqa: BLE001 - nunca debe impedir que la app abra
             import logging
 

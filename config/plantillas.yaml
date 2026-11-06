@@ -48,6 +48,15 @@ rubros:
       Les podemos armar la carta online con pedidos directo a su WhatsApp, sin comisiones de
       apps. ¿Les interesa verlo?
 
+# Seguimientos (día 3 y día 7) para quien no contestó. Mismas variables.
+seguimientos:
+  1: >-
+    Hola, ¿cómo andan? Les escribí hace unos días por {nombre}. Si les sirve, les mando un
+    ejemplo de cómo quedaría para que lo vean sin compromiso.
+  2: >-
+    Hola de nuevo. No quiero insistir: si ahora no es el momento, avísenme y no les escribo más.
+    Si les interesa, lo charlamos cuando puedan.
+
 # Frases para {problema_detectado} según lo que se sabe del negocio.
 problemas:
   sin_web: todavía no tienen página web

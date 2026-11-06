@@ -22,6 +22,7 @@
     </a>
     <nav class="nav" aria-label="Secciones">
       <div class="nav-group">Día a día</div>
+      <a href="/jornada" class="{{ 'active' if active in ('journey',) }}" {{ 'aria-current="page"'|safe if active in ('journey',) }}><span class="icon">{{ ic("list-checks") }}</span><span class="label">Mi jornada</span></a>
       <a href="/" class="{{ 'active' if active in ('dashboard',) }}" {{ 'aria-current="page"'|safe if active in ('dashboard',) }}><span class="icon">{{ ic("house") }}</span><span class="label">Inicio</span></a>
       <a href="/leads" class="{{ 'active' if active in ('leads', 'lead_detail', 'lead_new') }}" {{ 'aria-current="page"'|safe if active in ('leads', 'lead_detail', 'lead_new') }}><span class="icon">{{ ic("users") }}</span><span class="label">Leads</span></a>
       <a href="/revisar" class="{{ 'active' if active in ('review',) }}" {{ 'aria-current="page"'|safe if active in ('review',) }}><span class="icon">{{ ic("square-check-big") }}</span><span class="label">Revisar</span></a>

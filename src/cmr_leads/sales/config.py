@@ -20,6 +20,11 @@ class SalesConfig(BaseModel):
     )
     briefing_size: int = 8
     email_daily_limit: int = 20
+    # Piloto automático (0 o false = apagado). Todo se puede deshacer desde "Mi jornada".
+    auto_calificar_desde_ia: int = 75
+    auto_calificar_desde_score: int = 60
+    auto_calificar_max_por_dia: int = 15
+    auto_cerrar_sin_respuesta: bool = True
 
 
 class PlanVariant(BaseModel):

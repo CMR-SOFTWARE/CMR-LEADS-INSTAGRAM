@@ -17,5 +17,14 @@ stuck_days:
 # Cuántos leads muestra el briefing diario en "A quién escribirle hoy".
 briefing_size: 8
 
+# Piloto automático (Mi jornada). Todo lo que hace se puede deshacer con un botón.
+# Califica solo a los leads nuevos con contacto cuya chance de venta (IA) o puntaje superan estos
+# valores, hasta un máximo por día. 0 = apagado.
+auto_calificar_desde_ia: 75
+auto_calificar_desde_score: 60
+auto_calificar_max_por_dia: 15
+# Cierra como "Perdido — sin respuesta" a los que no contestaron después del último seguimiento.
+auto_cerrar_sin_respuesta: true
+
 # Cola de emails: máximo de emails por día (los aprobás vos y los mandás desde tu mail).
 email_daily_limit: 20

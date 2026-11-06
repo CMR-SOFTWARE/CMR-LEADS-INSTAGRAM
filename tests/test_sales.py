@@ -134,3 +134,46 @@ def test_briefing_lists_people_to_contact_and_overdue(session, workspace):
     b = build_briefing(SqlSalesRepository(session, workspace.id), SalesConfig(), utcnow())
     assert [lead.id for lead in b.to_contact] == [ready.id]
     assert [a.lead.id for a in b.follow_ups] == [late.id]
+
+
+def test_autopilot_qualifies_best_closes_silent_and_undoes(session, workspace):
+    from cmr_leads.sales.autopilot import build_journey, run_autopilot, undo
+    from cmr_leads.sales.repository import SqlSalesRepository
+
+    repo = SqlSalesRepository(session, workspace.id)
+    config = SalesConfig(auto_calificar_max_por_dia=1)
+    best = _lead(session, workspace, whatsapp_e164="+5493364000010", ai_score=90)
+    other = _lead(session, workspace, whatsapp_e164="+5493364000011", ai_score=85)
+    weak = _lead(session, workspace, whatsapp_e164="+5493364000012", ai_score=40)
+    no_contact = _lead(session, workspace, ai_score=95)
+    silent = _lead(session, workspace, status=LeadStatus.APPROVED, whatsapp_e164="+5493364000013")
+    for _ in range(3):
+        register_contact(session, silent, Channel.WHATSAPP, SalesConfig())
+    silent.next_follow_up_at = utcnow() - timedelta(days=1)
+
+    result = run_autopilot(session, repo, config, utcnow())
+    assert [lead.id for lead in result.qualified] == [best.id]  # respeta el tope diario
+    assert other.status == "new" and weak.status == "new" and no_contact.status == "new"
+    assert [lead.id for lead in result.closed] == [silent.id]
+    assert silent.status == "lost" and silent.lost_reason == "sin_respuesta"
+
+    assert "volvió a Nuevo" in undo(session, best, utcnow())
+    assert best.status == "new"
+    run_autopilot(session, repo, SalesConfig(), utcnow())
+    assert best.status == "new"  # deshecho a mano: no lo vuelve a calificar solo
+    assert "reabierto" in undo(session, silent, utcnow())
+    assert silent.status == "contacted" and silent.lost_reason is None
+
+    journey = build_journey(repo, SalesConfig(), utcnow(), skip=set())
+    assert journey.current == "revisar"
+    assert best.id in [lead.id for lead in journey.queues["revisar"]]
+    assert no_contact.id not in [lead.id for lead in journey.queues["revisar"]]
+
+
+def test_reply_no_interest_sets_lost_reason(session, workspace):
+    from cmr_leads.replies.classifier import ReplyClassifier
+    from cmr_leads.replies.service import register_reply
+
+    lead = _lead(session, workspace, status=LeadStatus.CONTACTED)
+    register_reply(session, lead, "No gracias, no nos interesa", ReplyClassifier())
+    assert lead.status == "lost" and lead.lost_reason == "no_interesa"

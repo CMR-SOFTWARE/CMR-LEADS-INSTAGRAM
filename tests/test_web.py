@@ -371,3 +371,16 @@ def test_sales_dashboard_and_briefing_render(client):
     assert "Tu día" in client.get("/").text
     for periodo in ("7d", "mes", "todo", "cualquiera"):
         assert client.get(f"/ventas?periodo={periodo}").status_code == 200
+
+
+def test_journey_page_guides_and_undo(client):
+    client.post("/leads/nuevo", data={"name": "Pelu Ana", "whatsapp": "+54 9 336 400-0099"})
+    page = client.get("/jornada").text
+    assert "Mi jornada" in page and "Lo que hizo el piloto hoy" in page
+    assert "Pelu Ana" in page and "Calificar" in page
+    lid = _lead(client, display_name="Pelu Ana").id
+    r = client.post(f"/revisar/{lid}", data={"action": "aprobar", "next": "/jornada?paso=revisar"})
+    assert "/jornada" in str(r.url)
+    page = client.get("/jornada?paso=enviar").text
+    assert "Abrir en WhatsApp" in page and "data-register" in page
+    assert client.get(f"/jornada?paso=enviar&skip={lid}").status_code == 200

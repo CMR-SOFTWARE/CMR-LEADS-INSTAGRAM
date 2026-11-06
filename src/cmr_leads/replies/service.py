@@ -53,11 +53,15 @@ def apply_analysis(session: Session, lead: Lead, analysis: ReplyAnalysis) -> Non
         set_status(session, lead, LeadStatus.REPLIED, analysis.summary or None)
     if category == "no_interesa":
         set_status(session, lead, LeadStatus.LOST, "No le interesa")
+        lead.lost_reason = "no_interesa"  # perder siempre lleva motivo
         lead.next_follow_up_at = None
+        lead.next_step = None
     elif category == "ahora_no":
         lead.next_follow_up_at = utcnow() + timedelta(days=FOLLOW_UP_LATER_DAYS)
+        lead.next_step = "Volver a escribirle (dijo que más adelante)"
     elif category in POSITIVE:
         lead.next_follow_up_at = utcnow()  # responder hoy
+        lead.next_step = analysis.suggested_action or "Responderle hoy"
 
 
 def register_reply(
