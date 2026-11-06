@@ -233,10 +233,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             import logging
 
             logging.getLogger(__name__).exception("No se pudo hacer el backup diario")
-        if settings.auto_search_enabled and settings.google_places_configured:
-            import threading
+        import threading
 
+        if settings.auto_search_enabled and settings.google_places_configured:
             threading.Thread(target=app.state.auto_search, name="auto-search", daemon=True).start()
+        if settings.instagram_dm_check_minutes and settings.facebook_page_id:
+            threading.Thread(target=app.state.dm_loop, name="instagram-dms", daemon=True).start()
         yield
 
     app = FastAPI(title="CMR Lead Finder", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -609,6 +611,79 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return Response(status_code=204)
         return back(f"/leads/{lead_id}", f"Contacto registrado. Próximo paso: {next_step}")
 
+    def check_instagram_dms(session: Session, ws: Workspace) -> str:
+        """Lee solo los DMs nuevos de Instagram y los pasa al piloto. Devuelve un resumen."""
+        import json
+
+        from cmr_leads.enrichment.instagram_discovery import InstagramApiError
+        from cmr_leads.instagram.client import GraphClient
+        from cmr_leads.instagram.sync import (
+            BudgetExceeded,
+            SyncResult,
+            daily_budget_guard,
+            sync_messages,
+        )
+        from cmr_leads.pipeline.budget import DailyBudget
+        from cmr_leads.replies.service import build_classifier
+
+        if not (settings.instagram_configured and settings.facebook_page_id):
+            return "Falta configurar FACEBOOK_PAGE_ID y la API de Instagram en .env"
+        state_path = settings.instagram_dm_state
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            state = {}
+        budget = DailyBudget(session, ws.id, "meta_stats", settings.meta_max_stats_requests_per_day)
+        client = GraphClient(
+            settings.meta_access_token,
+            settings.meta_graph_api_version,
+            on_request=daily_budget_guard(budget),
+        )
+        result = SyncResult()
+        started = utcnow().strftime("%Y-%m-%dT%H:%M:%S+0000")
+        try:
+            own = state.get("username") or client.get(
+                settings.instagram_business_account_id, fields="username"
+            ).get("username")
+            sync_messages(
+                session,
+                ws,
+                client,
+                settings.facebook_page_id,
+                own,
+                build_classifier(settings),
+                settings.default_country,
+                result,
+                updated_after=state.get("last_check"),
+            )
+        except (InstagramApiError, BudgetExceeded) as exc:
+            return f"No pude leer los mensajes de Instagram: {exc}"
+        session.commit()
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps({"last_check": started, "username": own}), encoding="utf-8"
+        )
+        return (
+            f"Instagram: {result.replies} respuestas nuevas, {result.new_leads} negocios nuevos "
+            f"que te escribieron ({result.conversations} chats con novedades)"
+        )
+
+    def dm_loop() -> None:
+        """Mientras la app está abierta, revisa los DMs cada X minutos."""
+        import logging
+        import time
+
+        while True:
+            try:
+                with db() as (session, ws):
+                    check_instagram_dms(session, ws)
+                    run_pilot(session, ws)
+            except Exception:  # noqa: BLE001 - nunca debe tirar la app
+                logging.getLogger(__name__).exception("Falló la revisión de DMs de Instagram")
+            time.sleep(max(5, settings.instagram_dm_check_minutes) * 60)
+
+    app.state.dm_loop = dm_loop
+
     def run_pilot(session: Session, ws: Workspace):
         from cmr_leads.sales.autopilot import run_autopilot
         from cmr_leads.sales.repository import SqlSalesRepository
@@ -674,8 +749,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 AUTO_CLOSED=AUTO_CLOSED,
                 auto_flag=auto_flag,
                 wa_url=_whatsapp_url(lead) if lead is not None else None,
+                dms_ready=bool(settings.instagram_configured and settings.facebook_page_id),
                 **_pipeline_context(),
             )
+
+    @app.post("/jornada/revisar-dms")
+    def journey_check_dms():
+        with db() as (session, ws):
+            msg = check_instagram_dms(session, ws)
+            run_pilot(session, ws)
+        return back("/jornada?paso=responder", msg)
 
     @app.post("/jornada/deshacer/{lead_id}")
     def journey_undo(lead_id: int):

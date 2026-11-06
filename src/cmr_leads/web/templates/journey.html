@@ -6,6 +6,11 @@
     <h1>Mi jornada</h1>
     <p>El piloto te lleva paso a paso. Lo automático lo podés deshacer, y siempre podés hacerlo a mano desde la ficha.</p>
   </div>
+  {% if dms_ready %}
+  <form method="post" action="/jornada/revisar-dms">
+    <button class="btn">{{ ic("instagram") }} Revisar DMs de Instagram ahora</button>
+  </form>
+  {% endif %}
 </div>
 
 <nav class="stepper" aria-label="Pasos de la jornada">

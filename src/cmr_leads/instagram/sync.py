@@ -192,8 +192,11 @@ def sync_messages(
     country: str,
     result: SyncResult,
     max_conversations: int = 25,
+    updated_after: str | None = None,
 ) -> None:
-    """Lee los DM de Instagram: registra respuestas de leads y crea leads con quien escribió a CMR."""
+    """Lee los DM de Instagram: registra respuestas de leads y crea leads con quien escribió a CMR.
+
+    Con `updated_after` (ISO de Meta) solo abre los chats con mensajes nuevos: ahorra consultas."""
     page_token = None
     try:
         page_token = client.get(page_id, fields="access_token").get("access_token")
@@ -213,6 +216,8 @@ def sync_messages(
         if not other or not other.get("username"):
             continue
         username = other["username"].lower()
+        if updated_after and (conversation.get("updated_time") or "") <= updated_after:
+            continue  # sin mensajes nuevos desde la última revisión
         detail = client.get(
             conversation["id"],
             token=page_token,

@@ -384,3 +384,9 @@ def test_journey_page_guides_and_undo(client):
     page = client.get("/jornada?paso=enviar").text
     assert "Abrir en WhatsApp" in page and "data-register" in page
     assert client.get(f"/jornada?paso=enviar&skip={lid}").status_code == 200
+
+
+def test_check_dms_without_config_explains_what_is_missing(client):
+    r = client.post("/jornada/revisar-dms")
+    assert "FACEBOOK_PAGE_ID" in _msg(r)
+    assert "Revisar DMs de Instagram ahora" not in client.get("/jornada").text

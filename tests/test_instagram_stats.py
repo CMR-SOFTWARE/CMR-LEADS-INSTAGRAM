@@ -246,3 +246,61 @@ def test_report_needs_enough_posts(session, workspace):
     _post(session, workspace, 1, "reel", 100, 19, 12, 5)
     session.flush()
     assert "pocas publicaciones" in build_report(session, workspace.id).recommendations[0]
+
+
+def test_sync_messages_skips_conversations_without_news(session, workspace):
+    from cmr_leads.instagram.sync import SyncResult, sync_messages
+    from cmr_leads.replies.classifier import ReplyClassifier
+
+    calls = []
+
+    class FakeGraph:
+        requests_made = 0
+
+        def get(self, path, token=None, **params):
+            calls.append(path)
+            if params.get("fields") == "access_token":
+                return {"access_token": "page"}
+            if path.endswith("/conversations"):
+                return {
+                    "data": [
+                        {
+                            "id": "c-old",
+                            "updated_time": "2026-11-01T10:00:00+0000",
+                            "participants": {"data": [{"username": "cmr"}, {"username": "vieja"}]},
+                        },
+                        {
+                            "id": "c-new",
+                            "updated_time": "2026-11-05T10:00:00+0000",
+                            "participants": {
+                                "data": [{"username": "cmr"}, {"username": "pelu.nueva"}]
+                            },
+                        },
+                    ]
+                }
+            return {
+                "messages": {
+                    "data": [
+                        {
+                            "created_time": "2026-11-05T10:00:00+0000",
+                            "from": {"username": "pelu.nueva"},
+                            "message": "Hola! ¿Cuánto sale el sistema de turnos?",
+                        },
+                    ]
+                }
+            }
+
+    result = SyncResult()
+    sync_messages(
+        session,
+        workspace,
+        FakeGraph(),
+        "page1",
+        "cmr",
+        ReplyClassifier(),
+        "AR",
+        result,
+        updated_after="2026-11-03T00:00:00+0000",
+    )
+    assert "c-old" not in calls and "c-new" in calls
+    assert result.new_leads == 1 and result.replies == 1

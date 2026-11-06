@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     meta_max_lookups_per_day: int = 150
     # Para leer los mensajes directos (opcional): ID de la página de Facebook vinculada.
     facebook_page_id: str | None = None
+    # Revisión automática de DMs mientras la app está abierta (0 = solo con el botón).
+    instagram_dm_check_minutes: int = 30
+    instagram_dm_state: Path = Path("data/instagram_dms.json")
     instagram_posts_to_sync: int = 25
     meta_max_stats_requests_per_day: int = 300
 
