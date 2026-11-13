@@ -288,10 +288,19 @@ class InstagramPost(Base):
     saves: Mapped[int | None] = mapped_column(Integer)
     shares: Mapped[int | None] = mapped_column(Integer)
     total_interactions: Mapped[int | None] = mapped_column(Integer)
+    profile_visits: Mapped[int | None] = mapped_column(Integer)
+    follows: Mapped[int | None] = mapped_column(Integer)
+    replies: Mapped[int | None] = mapped_column(Integer)  # respuestas a historias
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     @property
+    def is_story(self) -> bool:
+        return self.product_type == "STORY"
+
+    @property
     def kind(self) -> str:
+        if self.is_story:
+            return "Historia"
         if self.product_type == "REELS" or self.media_type == "VIDEO":
             return "Reel / video"
         if self.media_type == "CAROUSEL_ALBUM":
@@ -496,3 +505,38 @@ class AdReport(Base):
     data: Mapped[dict[str, Any]] = mapped_column(JSON)
     pdf_path: Mapped[str | None] = mapped_column(String(500))
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class InstagramDaily(Base):
+    """Métricas de la cuenta de Instagram de un solo día (para filtrar por semana, mes o año)."""
+
+    __tablename__ = "instagram_daily"
+    __table_args__ = (UniqueConstraint("workspace_id", "day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    day: Mapped[datetime] = mapped_column(DateTime)
+    reach: Mapped[int | None] = mapped_column(Integer)
+    views: Mapped[int | None] = mapped_column(Integer)
+    profile_views: Mapped[int | None] = mapped_column(Integer)
+    website_clicks: Mapped[int | None] = mapped_column(Integer)
+    accounts_engaged: Mapped[int | None] = mapped_column(Integer)
+    total_interactions: Mapped[int | None] = mapped_column(Integer)
+    link_taps: Mapped[int | None] = mapped_column(Integer)
+    # Toques a los botones del perfil por tipo: {"CALL": 2, "DIRECTION": 1, ...}
+    link_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Advice(Base):
+    """Último análisis pedido para una pantalla y unos filtros (Publicidad o Instagram)."""
+
+    __tablename__ = "advice"
+    __table_args__ = (UniqueConstraint("workspace_id", "scope", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    scope: Mapped[str] = mapped_column(String(20))  # publicidad | instagram
+    key: Mapped[str] = mapped_column(String(200))  # filtros: período, campaña, formato
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

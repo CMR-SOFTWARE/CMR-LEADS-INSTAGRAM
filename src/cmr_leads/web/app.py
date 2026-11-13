@@ -239,6 +239,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             threading.Thread(target=app.state.auto_search, name="auto-search", daemon=True).start()
         if settings.instagram_dm_check_minutes and settings.facebook_page_id:
             threading.Thread(target=app.state.dm_loop, name="instagram-dms", daemon=True).start()
+        if settings.instagram_configured and settings.instagram_stories_minutes:
+            threading.Thread(
+                target=app.state.stories_loop, name="instagram-stories", daemon=True
+            ).start()
         if settings.ads_configured and settings.meta_ads_sync_hours:
             threading.Thread(target=app.state.ads_loop, name="meta-ads", daemon=True).start()
         yield
@@ -1099,24 +1103,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return back("/mapa", msg)
 
     # ---------------- Instagram ----------------
-    @app.get("/instagram", response_class=HTMLResponse)
-    def instagram_page(request: Request):
-        from cmr_leads.instagram.analysis import build_report
-
-        with db() as (session, ws):
-            report = build_report(session, ws.id)
-            return render(
-                request,
-                "instagram.html",
-                report=report,
-                configured=settings.instagram_configured,
-                dms_configured=bool(settings.facebook_page_id),
-            )
-
     @app.post("/instagram/actualizar")
     def instagram_sync():
+        from cmr_leads.enrichment.instagram_discovery import InstagramApiError
         from cmr_leads.instagram.client import GraphClient
-        from cmr_leads.instagram.sync import daily_budget_guard, sync_instagram
+        from cmr_leads.instagram.stats import sync_stats
+        from cmr_leads.instagram.sync import BudgetExceeded, daily_budget_guard, sync_instagram
         from cmr_leads.pipeline.budget import DailyBudget
         from cmr_leads.replies.service import build_classifier
 
@@ -1140,13 +1132,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 build_classifier(settings),
                 settings.default_country,
                 settings.instagram_posts_to_sync,
+                include_posts=False,  # las trae sync_stats, con más métricas y todo el año
             )
+            session.commit()
+            stats_msg = ""
+            try:
+                stats_msg = sync_stats(
+                    session, ws.id, client, settings.instagram_business_account_id
+                ).summary()
+            except (InstagramApiError, BudgetExceeded) as exc:
+                session.commit()  # lo que se alcanzó a traer queda guardado
+                stats_msg = f"Estadísticas incompletas: {exc}"
             config = scoring_config()
             for lead in session.scalars(
                 select(Lead).where(Lead.workspace_id == ws.id, Lead.business_score.is_(None))
             ):
                 apply_score(lead, config)
-        return back("/instagram", result.summary())
+        return back("/instagram", f"{result.summary()} · {stats_msg}")
 
     @app.post("/leads/{lead_id}/notas")
     def lead_notes(lead_id: int, notes: str = Form("")):
@@ -1598,6 +1600,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ---------------- Publicidad (Meta Ads) ----------------
     from cmr_leads.ads.web import register_ads_routes
+    from cmr_leads.instagram.web import register_instagram_routes
+
+    register_instagram_routes(app, settings, templates, db, render, back)
 
     register_ads_routes(app, settings, templates, db, render, back)
 

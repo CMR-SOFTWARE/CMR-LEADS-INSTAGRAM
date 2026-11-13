@@ -169,6 +169,10 @@ el plan del scoring por reglas y la clasificación de respuestas por palabras cl
 mandan teléfonos, emails ni documentos (se recortan antes) y nunca envía nada sola.
 `ANTHROPIC_API_KEY` queda como alternativa para clasificar respuestas.
 
+## Estadísticas de Instagram
+
+Pestaña **Instagram**: filtros por período y formato, gráficos, mejor día y horario por formato, historias, links tocados y análisis de qué conviene publicar. Guía: [docs/instagram-estadisticas.md](docs/instagram-estadisticas.md).
+
 ## Publicidad en Meta (opcional)
 
 Sección **Publicidad** del panel (`/publicidad`): lee las campañas de CMR en Instagram y Facebook

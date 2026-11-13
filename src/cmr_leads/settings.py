@@ -1,6 +1,8 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +33,7 @@ class Settings(BaseSettings):
     instagram_dm_check_minutes: int = 30
     instagram_dm_state: Path = Path("data/instagram_dms.json")
     instagram_posts_to_sync: int = 25
+    instagram_stories_minutes: int = 60  # cada cuánto leer las historias activas (0 = nunca)
     meta_max_stats_requests_per_day: int = 300
 
     # Publicidad (Meta Ads). Token de un usuario del sistema de la app de anuncios
@@ -74,6 +77,15 @@ class Settings(BaseSettings):
     sender_name: str = "Tomás"
     company_name: str = "CMR Software Solutions"
     company_city: str = "San Nicolás"
+
+    @field_validator("meta_graph_api_version", "meta_ads_graph_api_version")
+    @classmethod
+    def _graph_version(cls, value: str) -> str:
+        """Acepta "v26", "v26." o "26" y lo deja como "v26.0" (Meta rechaza el resto)."""
+        match = re.fullmatch(r"v?(\d+)(?:\.(\d*))?", (value or "").strip())
+        if not match:
+            return value
+        return f"v{match.group(1)}.{match.group(2) or 0}"
 
     @property
     def reply_ai_configured(self) -> bool:

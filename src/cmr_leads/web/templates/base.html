@@ -45,5 +45,6 @@
 </div>
 <div class="toast-region" aria-live="polite">{% if msg %}<div class="toast">{{ msg }}</div>{% endif %}</div>
 <script src="{{ url_for('static', path='app.js') }}?v={{ asset_version }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

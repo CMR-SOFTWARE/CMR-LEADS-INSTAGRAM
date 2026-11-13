@@ -91,3 +91,12 @@ document.querySelectorAll("[data-register]").forEach((link) => {
       .catch(() => {});
   });
 });
+
+// Botones que tardan (actualizar, analizar): avisan que están trabajando y evitan doble clic.
+document.addEventListener("submit", (e) => {
+  if (e.defaultPrevented) return;
+  const button = e.target.querySelector("button[data-busy]");
+  if (!button) return;
+  button.textContent = button.dataset.busy;
+  setTimeout(() => { button.disabled = true; }, 0);
+});

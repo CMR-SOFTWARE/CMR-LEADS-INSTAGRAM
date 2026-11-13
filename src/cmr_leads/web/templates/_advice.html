@@ -1,0 +1,27 @@
+{# Análisis de los números filtrados. Espera: advice, ai_ready, advice_action, advice_title, advice_fields (dict). #}
+{% from "_macros.html" import ic %}
+<div class="card advice-card" id="analisis">
+  <div class="card-head">
+    <h2>{{ advice_title }}</h2>
+    <form method="post" action="{{ advice_action }}" class="advice-form">
+      {% for name, value in advice_fields.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      <button class="btn btn-primary btn-sm" {{ 'disabled' if not ai_ready }} data-busy="Analizando...">{{ ic("trending-up") }} {{ "Volver a analizar" if advice else "Analizar este período" }}</button>
+    </form>
+  </div>
+  {% if not ai_ready %}
+    <p class="muted" style="margin:0">Para el análisis falta <code>GEMINI_API_KEY</code> en el <code>.env</code>.</p>
+  {% elif advice %}
+    {% set a = advice.data %}
+    <p class="advice-decision">{{ a.decision }}</p>
+    <p class="muted" style="margin-top:0">{{ a.resumen }}</p>
+    {% if a.acciones %}
+    <ol class="advice-actions">
+      {% for x in a.acciones %}<li><strong>{{ x.accion }}</strong><span class="muted small">{{ x.porque }}</span></li>{% endfor %}
+    </ol>
+    {% endif %}
+    {% if a.cuidado %}<p class="muted small" style="margin-bottom:0">Ojo: {{ a.cuidado }}</p>{% endif %}
+    <p class="muted small" style="margin-bottom:0">Analizado el {{ advice.created_at|date }} con los filtros de arriba.</p>
+  {% else %}
+    <p class="muted" style="margin:0">Tocá "Analizar este período" y te digo qué conviene hacer según estos números y filtros.</p>
+  {% endif %}
+</div>

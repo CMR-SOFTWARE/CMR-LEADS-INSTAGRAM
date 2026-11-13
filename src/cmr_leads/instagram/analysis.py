@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from statistics import mean
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from cmr_leads.db.models import InstagramAccountSnapshot, InstagramPost, Lead, LeadSource
@@ -94,7 +94,10 @@ def build_report(session: Session, workspace_id: int) -> InstagramReport:
     report.posts = list(
         session.scalars(
             select(InstagramPost)
-            .where(InstagramPost.workspace_id == workspace_id)
+            .where(
+                InstagramPost.workspace_id == workspace_id,
+                or_(InstagramPost.product_type.is_(None), InstagramPost.product_type != "STORY"),
+            )
             .order_by(InstagramPost.published_at.desc())
         )
     )

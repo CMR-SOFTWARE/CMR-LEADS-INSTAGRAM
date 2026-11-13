@@ -298,11 +298,13 @@ def sync_instagram(
     classifier: ReplyClassifier,
     country: str,
     posts_limit: int = 25,
+    include_posts: bool = True,
 ) -> SyncResult:
     result = SyncResult()
     try:
         sync_account(session, workspace, client, ig_user_id, result)
-        sync_posts(session, workspace, client, ig_user_id, posts_limit, result)
+        if include_posts:
+            sync_posts(session, workspace, client, ig_user_id, posts_limit, result)
         if page_id:
             own = None
             snapshot = session.scalar(

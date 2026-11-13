@@ -57,18 +57,27 @@
   <div class="kpi"><div class="value">{{ totals.cost_per_message|money }}</div><div class="label">Costo por mensaje {{ delta(changes.cost_per_message, true) }}</div></div>
 </div>
 
+{% set fields = {"periodo": periodo, "desde": since.isoformat(), "hasta": until.isoformat(), "campana": campana or "", "nivel": nivel} %}
+{% with advice_action="/publicidad/analizar", advice_title="¿Dónde conviene poner la plata?", advice_fields=fields %}{% include "_advice.html" %}{% endwith %}
+
 {% if series %}
-<div class="card">
-  <div class="card-head"><h2>Inversión por {{ "mes" if monthly else "día" }}</h2><span class="muted small">el número arriba de cada barra son los mensajes</span></div>
-  <div class="ads-spark" role="img" aria-label="Inversión {{ 'mensual' if monthly else 'diaria' }} del período">
-    {% for d in series %}
-    <div class="ads-spark-col" title="{{ d.day.strftime('%m/%Y' if monthly else '%d/%m') }}: {{ d.spend|money }} · {{ d.messages }} mensajes">
-      <span class="ads-spark-msg">{{ d.messages or "" }}</span>
-      <div class="ads-spark-bar" style="height: {{ ((d.spend / max_spend) * 100)|round if max_spend else 0 }}%"></div>
-    </div>
-    {% endfor %}
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>Inversión y mensajes por {{ "mes" if monthly else "día" }}</h2></div>
+    <div class="chart-box">{{ charts["ad-series"] }}<canvas data-chart="ad-series" aria-label="Inversión y mensajes por {{ 'mes' if monthly else 'día' }}"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>En qué se fue la plata</h2></div>
+    {% if charts["ad-split"] %}<div class="chart-box">{{ charts["ad-split"] }}<canvas data-chart="ad-split" aria-label="Inversión por campaña"></canvas></div>
+    {% else %}<p class="muted">Sin inversión en el período.</p>{% endif %}
   </div>
 </div>
+{% if charts["ad-cost"] %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Inversión contra mensajes por {{ levels[nivel]|lower }}</h2><span class="muted small">la barra alta con pocos mensajes es la que hay que revisar</span></div>
+  <div class="chart-box">{{ charts["ad-cost"] }}<canvas data-chart="ad-cost" aria-label="Inversión y mensajes por {{ levels[nivel]|lower }}"></canvas></div>
+</div>
+{% endif %}
 {% endif %}
 
 <div class="card" style="margin-top:16px">
@@ -118,4 +127,8 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/chart.umd.js') }}?v={{ asset_version }}"></script>
+<script src="{{ url_for('static', path='charts.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

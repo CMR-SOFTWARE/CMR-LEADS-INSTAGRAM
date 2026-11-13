@@ -14,6 +14,17 @@ Solo **lee** datos: no crea ni modifica anuncios.
 | Reportes | Reporte mensual con comparación contra el mes anterior, los 3 mejores y los 3 peores anuncios y recomendaciones. Se descarga en PDF. |
 | Configuración | Checklist de la configuración publicitaria (estado y notas) y los pasos para conectar la cuenta. |
 
+## Gráficos y análisis
+
+- Los gráficos (inversión y mensajes en el tiempo, en qué se fue la plata, inversión contra
+  mensajes por campaña, conjunto o anuncio) siguen los filtros de período y campaña. Pasando el
+  mouse se ven los valores exactos.
+- **¿Dónde conviene poner la plata?**: el botón "Analizar este período" le pasa a Gemini los
+  números filtrados (campañas, anuncios y el rendimiento orgánico de cada formato de Instagram) y
+  devuelve la decisión, las acciones con su porqué y los límites del análisis. Solo se mandan
+  números y nombres de anuncios, nunca datos de leads. Queda guardado por filtro; "Volver a
+  analizar" lo actualiza. Necesita `GEMINI_API_KEY`.
+
 ## Conectar la cuenta (una sola vez)
 
 1. **App nueva.** En [developers.facebook.com/apps](https://developers.facebook.com/apps) creá una

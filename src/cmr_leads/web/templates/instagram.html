@@ -1,77 +1,191 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import ic %}
+{% block title %}Instagram · CMR Lead Finder{% endblock %}
+{% macro delta(value) -%}
+  {%- if value is not none -%}
+    <span class="{{ 'delta-up' if value > 0 else ('delta-down' if value < 0 else 'muted') }} small">{{ "%+.0f"|format(value * 100) }}%</span>
+  {%- endif -%}
+{%- endmacro %}
+{% macro best(t) -%}
+  {%- if t.best_day -%}{{ t.best_day.name }}{%- else -%}s/d{%- endif %} · {% if t.best_slot %}{{ t.best_slot.name }}{% else %}s/d{% endif -%}
+{%- endmacro %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Instagram</h1><p>Cómo le va a la cuenta de CMR y qué contenido funciona.</p></div>
-  <form method="post" action="/instagram/actualizar"><button class="btn btn-primary" {{ 'disabled' if not configured }}>↻ Actualizar desde Instagram</button></form>
+  <div><h1>Instagram</h1><p>Cómo le va a la cuenta de CMR, qué formato funciona y cuándo conviene publicar.</p></div>
+  <form method="post" action="/instagram/actualizar"><button class="btn btn-primary" {{ 'disabled' if not configured }} data-busy="Actualizando...">{{ ic("refresh-cw") }} Actualizar desde Instagram</button></form>
 </div>
 
 {% if not configured %}
 <div class="card">
-  <div class="card-head"><h2>🔌 Falta conectar la API de Instagram</h2><span class="chip amber">Pendiente</span></div>
-  <p class="muted" style="margin-top:0">Todo está listo: apenas completes estos datos en el archivo <code>.env</code> y reinicies el programa, esta página se llena sola.</p>
+  <div class="card-head"><h2>Falta conectar la API de Instagram</h2><span class="chip amber">Pendiente</span></div>
+  <p class="muted" style="margin-top:0">Completá estos datos en el <code>.env</code> y reiniciá el programa.</p>
   <ol>
     <li>La cuenta de Instagram de CMR tiene que ser <strong>profesional</strong> y estar <strong>vinculada a una página de Facebook</strong>.</li>
-    <li>En <a href="https://developers.facebook.com/" target="_blank" rel="noopener">developers.facebook.com</a> creá una app (tipo Empresa) y agregá el producto <strong>Instagram</strong> (login con Facebook).</li>
+    <li>En <a href="https://developers.facebook.com/" target="_blank" rel="noopener">developers.facebook.com</a> creá una app (tipo Empresa) con el producto <strong>Instagram</strong>.</li>
     <li>Permisos: <code>instagram_basic</code>, <code>instagram_manage_insights</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code> y, para leer mensajes, <code>instagram_manage_messages</code> y <code>pages_messaging</code>.</li>
-    <li>Generá un token (ideal: <em>System User</em> en Business Manager, no vence) y completá:
+    <li>Generá un token de usuario del sistema y completá:
 <pre class="code">META_ACCESS_TOKEN=...
 INSTAGRAM_BUSINESS_ACCOUNT_ID=...
 FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
   </ol>
-  <p class="muted small">Leer mensajes de cualquier persona puede requerir que Meta revise la app. Las estadísticas funcionan sin revisión porque son de tu propia cuenta.</p>
 </div>
 {% endif %}
 
-{% set s = report.latest %}
-{% if s %}
-<div class="kpis">
-  <div class="kpi accent"><div class="value">{{ "{:,}".format(s.followers or 0).replace(",", ".") }}</div><div class="label">Seguidores{% if report.follower_change is not none %} ({{ "%+d"|format(report.follower_change) }}){% endif %}</div></div>
-  <div class="kpi"><div class="value">{{ s.reach or "—" }}</div><div class="label">Alcance ({{ s.period_days }} días)</div></div>
-  <div class="kpi"><div class="value">{{ s.profile_views or "—" }}</div><div class="label">Visitas al perfil</div></div>
-  <div class="kpi"><div class="value">{{ s.website_clicks if s.website_clicks is not none else "—" }}</div><div class="label">Clics al link</div></div>
-  <div class="kpi"><div class="value">{{ report.dm_leads }}</div><div class="label">Negocios que te escribieron</div></div>
-</div>
-<p class="muted small">Última actualización: {{ s.day|date }}{% if not dms_configured %} · Mensajes directos: falta <code>FACEBOOK_PAGE_ID</code>{% endif %}</p>
-{% elif configured %}
-<div class="notice info">Tocá "Actualizar desde Instagram" para traer las estadísticas.</div>
-{% endif %}
-
-{% if report.posts %}
-<div class="card">
-  <div class="card-head"><h2>💡 Qué aprendimos</h2></div>
-  <ul class="tips">{% for tip in report.recommendations %}<li>{{ tip }}</li>{% endfor %}</ul>
-</div>
-
-<div class="grid grid-3" style="margin-top:16px">
-  {% for title, groups in [("Por formato", report.by_kind), ("Por día", report.by_weekday), ("Por horario", report.by_slot)] %}
-  <div class="card">
-    <div class="card-head"><h2>{{ title }}</h2></div>
-    {% set top = (groups|map(attribute="avg_reach")|max) if groups else 0 %}
-    {% for g in groups %}
-      <div class="dim-row" style="grid-template-columns: 1fr 1.2fr 60px"><span>{{ g.name }} <span class="muted small">({{ g.posts }})</span></span><div class="bar fit"><div style="width: {{ (g.avg_reach / top * 100)|round if top else 0 }}%"></div></div><strong>{{ g.avg_reach|round|int }}</strong></div>
-    {% endfor %}
-    <p class="muted small" style="margin-bottom:0">Alcance promedio por publicación.</p>
+<form class="ads-filters" method="get" action="/instagram">
+  <div>
+    <label for="periodo">Período</label>
+    <select id="periodo" name="periodo" onchange="if (this.value === 'rango') { this.form.querySelector('.ads-range').hidden = false } else { this.form.submit() }">
+      {% for key, label in periods.items() %}<option value="{{ key }}" {{ 'selected' if key == periodo }}>{{ label }}</option>{% endfor %}
+    </select>
   </div>
-  {% endfor %}
+  <div class="ads-range" {{ 'hidden' if periodo != 'rango' }}>
+    <div><label for="desde">Desde</label><input id="desde" type="date" name="desde" value="{{ d.since.isoformat() }}"></div>
+    <div><label for="hasta">Hasta</label><input id="hasta" type="date" name="hasta" value="{{ d.until.isoformat() }}"></div>
+  </div>
+  <div>
+    <label for="formato">Formato</label>
+    <select id="formato" name="formato" onchange="this.form.submit()">
+      <option value="">Todos los posteos</option>
+      {% for key, label in formats.items() %}<option value="{{ key }}" {{ 'selected' if key == formato }}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="ads-filters-btn"><button class="btn">Ver</button></div>
+</form>
+<p class="muted small">Del {{ d.since.strftime("%d/%m/%Y") }} al {{ d.until.strftime("%d/%m/%Y") }}. Las variaciones comparan contra el período anterior de la misma duración.{% if report.latest %} Seguidores: <strong>{{ report.latest.followers|num }}</strong>.{% endif %}</p>
+
+{% set t = d.totals %}
+<div class="kpis">
+  <div class="kpi accent"><div class="value">{{ t.views|num }}</div><div class="label">Visualizaciones {{ delta(changes.views) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.reach_avg|num }}</div><div class="label">Alcance por día (promedio) {{ delta(changes.reach_avg) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.profile_views|num }}</div><div class="label">Visitas al perfil {{ delta(changes.profile_views) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.website_clicks|num }}</div><div class="label">Clics al link de la bio {{ delta(changes.website_clicks) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.link_taps|num }}</div><div class="label">Toques a botones {{ delta(changes.link_taps) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.interactions|num }}</div><div class="label">Interacciones {{ delta(changes.interactions) }}</div></div>
+</div>
+{% if configured and not t.days %}<div class="notice info">Todavía no hay datos día por día en este período. Tocá "Actualizar desde Instagram": la primera vez completa el año de a tandas.</div>{% endif %}
+
+{% set fields = {"periodo": periodo, "desde": d.since.isoformat(), "hasta": d.until.isoformat(), "formato": formato} %}
+{% with advice_action="/instagram/analizar", advice_title="Qué conviene hacer", advice_fields=fields %}{% include "_advice.html" %}{% endwith %}
+
+<div class="grid grid-2 ig-top" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>Visualizaciones por {{ "mes" if d.monthly else "día" }}</h2></div>
+    {% if d.series %}<div class="chart-box">{{ charts["ig-series"] }}<canvas data-chart="ig-series" aria-label="Visualizaciones, visitas al perfil y clics por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
+    {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>A dónde entran</h2></div>
+    {% if d.links %}<div class="chart-box">{{ charts["ig-links"] }}<canvas data-chart="ig-links" aria-label="Toques por link y botón del perfil"></canvas></div>
+    {% else %}<p class="muted">Nadie tocó links ni botones del perfil en este período.</p>{% endif %}
+    <p class="muted small" style="margin-bottom:0">Meta informa cuántas veces se tocó cada link o botón, no quién lo tocó.</p>
+  </div>
 </div>
 
 <div class="card" style="margin-top:16px">
-  <div class="card-head"><h2>Publicaciones</h2><span class="muted small">ordenadas por fecha</span></div>
-  <table>
-    <tr><th>Publicación</th><th>Formato</th><th>Fecha</th><th>Alcance</th><th>Interacciones</th><th>Guardados</th><th>Tasa</th></tr>
-    {% for p in report.posts %}
+  <div class="card-head"><h2>Qué formato funciona más</h2><span class="muted small">publicaciones subidas en el período</span></div>
+  {% if d.formats %}
+  <div class="chart-box short">{{ charts["ig-formats"] }}<canvas data-chart="ig-formats" aria-label="Vistas y alcance promedio por formato"></canvas></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Formato</th><th class="num">Subidas</th><th class="num">Vistas promedio</th><th class="num">Alcance promedio</th><th class="num">Interacciones promedio</th><th class="num">Visitas al perfil</th><th>Mejor día · horario</th></tr></thead>
+    <tbody>
+    {% for f in d.formats %}
+      <tr>
+        <td><a href="?periodo={{ periodo }}&desde={{ d.since.isoformat() }}&hasta={{ d.until.isoformat() }}&formato={{ f.key }}">{{ f.name }}</a></td>
+        <td class="num">{{ f.count|num }}</td>
+        <td class="num"><strong>{{ f.avg_views|num }}</strong></td>
+        <td class="num">{{ f.avg_reach|num }}</td>
+        <td class="num">{{ f.avg_interactions|num }}</td>
+        <td class="num">{{ f.profile_visits|num }}</td>
+        <td>{{ best(f.times) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted">No se subieron publicaciones en este período.</p>{% endif %}
+</div>
+
+{% for f in d.formats if not formato or f.key == formato %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head">
+    <h2>{{ f.name }}: qué día y a qué hora se ve más</h2>
+    <span class="chip accent">Mejor: {{ best(f.times) }}</span>
+  </div>
+  <div class="grid grid-2">
+    <div><p class="muted small">Vistas promedio según el día en que se subió</p><div class="chart-box short">{{ charts["ig-day-" ~ f.key] }}<canvas data-chart="ig-day-{{ f.key }}" aria-label="Vistas promedio de {{ f.name }} por día"></canvas></div></div>
+    <div><p class="muted small">Vistas promedio según el horario en que se subió</p><div class="chart-box short">{{ charts["ig-slot-" ~ f.key] }}<canvas data-chart="ig-slot-{{ f.key }}" aria-label="Vistas promedio de {{ f.name }} por horario"></canvas></div></div>
+  </div>
+  <details class="ig-heat">
+    <summary>Ver cruce día y horario</summary>
+    <div class="table-wrap"><table class="heat">
+      <thead><tr><th></th>{% for s in f.times.slots %}<th class="num">{{ s.name }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% set top = f.times.heat_max %}
+      {% for row in f.times.heat %}
+        <tr><th>{{ f.times.days[loop.index0].name }}</th>
+        {% for cell in row %}
+          {% set level = ((cell.avg / top * 4)|round|int) if cell.avg and top else 0 %}
+          <td class="num heat-{{ [level, 4]|min }}" title="{{ cell.count }} publicaciones">{% if cell.count %}{{ cell.avg|num }}<span class="muted small"> ({{ cell.count }})</span>{% endif %}</td>
+        {% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="muted small" style="margin-bottom:0">Vistas promedio y, entre paréntesis, cuántas publicaciones hay en cada casillero. Con 1 o 2 publicaciones el dato es orientativo.</p>
+  </details>
+</div>
+{% endfor %}
+
+{% set st = d.stories %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Historias</h2>{% if st.total %}<span class="chip accent">Mejor: {{ best(st.times) }}</span>{% endif %}</div>
+  {% if st.total %}
+  <div class="kpis compact">
+    <div class="kpi"><div class="value">{{ st.total|num }}</div><div class="label">Historias subidas</div></div>
+    <div class="kpi"><div class="value">{{ "%.1f"|format(st.per_day_avg)|replace(".", ",") }}</div><div class="label">Por día (promedio)</div></div>
+    <div class="kpi"><div class="value">{{ st.views|num }}</div><div class="label">Visualizaciones</div></div>
+    <div class="kpi"><div class="value">{{ st.avg_views|num }}</div><div class="label">Vistas por historia</div></div>
+    <div class="kpi"><div class="value">{{ st.replies|num }}</div><div class="label">Respuestas</div></div>
+  </div>
+  <div class="grid grid-2">
+    <div><p class="muted small">Cuántas se subieron y cuántas vistas sumaron cada día</p><div class="chart-box short">{{ charts["ig-stories"] }}<canvas data-chart="ig-stories" aria-label="Historias y vistas por día"></canvas></div></div>
+    <div><p class="muted small">Por día de la semana: vistas por historia y cuántas se suben</p><div class="chart-box short">{{ charts["ig-stories-week"] }}<canvas data-chart="ig-stories-week" aria-label="Historias por día de la semana"></canvas></div></div>
+  </div>
+  {% else %}
+  <p class="muted">Todavía no hay historias guardadas en este período.</p>
+  {% endif %}
+  {% if d.stories_tracked_since and d.stories_tracked_since > d.since %}<div class="notice info">Las historias se guardan desde el {{ d.stories_tracked_since.strftime("%d/%m/%Y") }}: los números de historias de este período cuentan desde ese día.</div>{% endif %}
+  <p class="muted small" style="margin-bottom:0">Meta muestra los datos de cada historia solo mientras está activa (24 h). Se leen{% if stories_minutes %} cada {{ stories_minutes }} minutos{% endif %} con la app abierta: si la compu está apagada todo el día, las de ese día pueden faltar.</p>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>{{ formats[formato] if formato else "Publicaciones" }} del período</h2><span class="muted small">de más a menos vistas</span></div>
+  {% if d.posts %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Publicación</th><th>Formato</th><th>Subida</th><th class="num">Vistas</th><th class="num">Alcance</th><th class="num">Interacciones</th><th class="num">Visitas al perfil</th></tr></thead>
+    <tbody>
+    {% for p in d.posts[:40] %}
     <tr>
-      <td style="max-width:320px"><a href="{{ p.permalink }}" target="_blank" rel="noopener">{{ ((p.caption or "Sin texto").split("\n")[0])[:70] }}</a></td>
+      <td style="max-width:320px">{% if p.permalink %}<a href="{{ p.permalink }}" target="_blank" rel="noopener">{% endif %}{{ ((p.caption or "Sin texto").split("\n")[0])[:70] }}{% if p.permalink %}</a>{% endif %}</td>
       <td>{{ p.kind }}</td>
-      <td>{{ p.published_at|date }}</td>
-      <td>{{ p.reach if p.reach is not none else "—" }}</td>
-      <td>{{ p.interactions }}</td>
-      <td>{{ p.saves if p.saves is not none else "—" }}</td>
-      <td><strong>{{ p.engagement_rate|pct }}</strong></td>
+      <td>{{ (p.published_at - ig_offset).strftime("%d/%m %H:%M") if p.published_at else "s/d" }}</td>
+      <td class="num"><strong>{{ p.views|num }}</strong></td>
+      <td class="num">{{ p.reach|num }}</td>
+      <td class="num">{{ p.interactions|num }}</td>
+      <td class="num">{{ p.profile_visits|num }}</td>
     </tr>
     {% endfor %}
-  </table>
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted">No hay publicaciones en este período.</p>{% endif %}
+</div>
+
+{% if report.recommendations and report.posts %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Lo que muestran todas las publicaciones guardadas</h2></div>
+  <ul class="tips">{% for tip in report.recommendations %}<li>{{ tip }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', path='vendor/chart.umd.js') }}?v={{ asset_version }}"></script>
+<script src="{{ url_for('static', path='charts.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

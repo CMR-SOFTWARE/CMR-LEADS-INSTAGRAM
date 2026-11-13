@@ -30,9 +30,12 @@ from cmr_leads.ads.service import (
     run_ads_sync,
 )
 from cmr_leads.ads.sync import fetch_period, standard_periods
+from cmr_leads.advice import get_advice, request_advice
 from cmr_leads.db.models import AdAlert, AdChecklistItem, AdReport, utcnow
 from cmr_leads.instagram.sync import BudgetExceeded
+from cmr_leads.messaging.ai_writer import AiWriterError
 from cmr_leads.settings import Settings
+from cmr_leads.web.charts import chart, dataset
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +98,82 @@ def resolve_period(periodo: str, desde: str, hasta: str, today: date) -> tuple[s
         return "rango", since, min(until, today)
     key = periodo if periodo in periods else "mes"
     return key, *periods[key]
+
+
+def ads_charts(series: list[dict], monthly: bool, campaigns: list, rows: list) -> dict:
+    """Gráficos del resumen: inversión y mensajes en el tiempo, reparto y comparación por fila."""
+    fmt = "%m/%Y" if monthly else "%d/%m"
+    charts = {
+        "ad-series": chart(
+            "ad-series",
+            "bar",
+            [d["day"].strftime(fmt) for d in series],
+            [
+                dataset("Inversión", [round(d["spend"]) for d in series], "azul", fmt="money"),
+                dataset("Mensajes", [d["messages"] for d in series], "turquesa", "line", "y1"),
+            ],
+        )
+    }
+    spent = [c for c in campaigns if c.totals.spend > 0]
+    if spent:
+        charts["ad-split"] = chart(
+            "ad-split",
+            "doughnut",
+            [_short(c.name) for c in spent],
+            [dataset("Inversión", [round(c.totals.spend) for c in spent], fmt="money")],
+        )
+    with_spend = [r for r in rows if r.totals.spend > 0]
+    if with_spend:
+        charts["ad-cost"] = chart(
+            "ad-cost",
+            "bar",
+            [_short(r.name) for r in with_spend],
+            [
+                dataset(
+                    "Inversión", [round(r.totals.spend) for r in with_spend], "azul", fmt="money"
+                ),
+                dataset("Mensajes", [r.totals.messages for r in with_spend], "turquesa", axis="y1"),
+            ],
+        )
+    return charts
+
+
+def _short(name: str, size: int = 32) -> str:
+    return name if len(name) <= size else name[: size - 1] + "…"
+
+
+def _rounded(values: dict) -> dict:
+    return {k: (round(v) if isinstance(v, float) else v) for k, v in values.items()}
+
+
+def ads_facts(totals, previous, changes, campaigns, ads, organic, since, until) -> dict:
+    """Números para el análisis de dónde invertir (sin datos personales)."""
+
+    def row(r):
+        t = r.totals
+        return {
+            "nombre": r.name,
+            "campana": r.parent,
+            "estado": r.status,
+            "inversion": round(t.spend),
+            "alcance": t.reach,
+            "impresiones": t.impressions,
+            "clics": t.link_clicks,
+            "mensajes": t.messages,
+            "costo_por_mensaje": round(t.cost_per_message) if t.cost_per_message else None,
+            "ctr_pct": round(t.ctr * 100, 2) if t.ctr else None,
+            "presupuesto_diario": r.budget,
+        }
+
+    return {
+        "periodo": f"{since:%d/%m/%Y} al {until:%d/%m/%Y}",
+        "totales": _rounded(totals.as_dict()),
+        "periodo_anterior": _rounded(previous.as_dict()),
+        "variaciones_pct": {k: round(v * 100) for k, v in changes.items() if v is not None},
+        "campanas": [row(c) for c in campaigns],
+        "anuncios": [row(a) for a in ads],
+        "instagram_organico_por_formato": organic,
+    }
 
 
 def register_ads_routes(
@@ -181,6 +260,8 @@ def register_ads_routes(
             monthly = (until - since).days > 62
             if monthly:
                 series = by_month(series)
+            advice_key = f"{periodo}|{since}|{until}|{campana or ''}"
+            advice = get_advice(session, ws.id, "publicidad", advice_key)
             return render(
                 request,
                 "ads.html",
@@ -209,9 +290,58 @@ def register_ads_routes(
                 rows=rows,
                 series=series,
                 monthly=monthly,
+                charts=ads_charts(series, monthly, campaigns, rows),
+                advice=advice,
+                ai_ready=bool(settings.gemini_api_key),
                 max_spend=max((d["spend"] for d in series), default=0),
                 sync_hours=settings.meta_ads_sync_hours,
             )
+
+    @app.post("/publicidad/analizar")
+    def ads_advice(
+        periodo: str = Form("mes"),
+        desde: str = Form(""),
+        hasta: str = Form(""),
+        campana: str = Form(""),
+        nivel: str = Form("campanas"),
+    ):
+        from cmr_leads.instagram.dashboard import build_dashboard
+
+        periodo, since, until = resolve_period(periodo, desde, hasta, date.today())
+        campaign_id = int(campana) if campana.isdigit() else None
+        nivel = nivel if nivel in LEVELS else "campanas"
+        target = (
+            f"/publicidad?periodo={periodo}&desde={since}&hasta={until}&nivel={nivel}"
+            f"&campana={campaign_id or ''}"
+        )
+        length = (until - since).days + 1
+        prev_until = since - timedelta(days=1)
+        prev_since = prev_until - timedelta(days=length - 1)
+        with db() as (session, ws):
+            account = get_account(session, ws.id, settings)
+            account_id = account.meta_account_id if account else None
+            totals = account_totals(session, ws.id, since, until, account_id)
+            if not totals.spend:
+                return back(target, "No hay inversión en este período para analizar")
+            previous = account_totals(session, ws.id, prev_since, prev_until, None)
+            changes = {
+                "inversion": pct_change(totals.spend, previous.spend),
+                "mensajes": pct_change(totals.messages, previous.messages),
+                "costo_por_mensaje": pct_change(totals.cost_per_message, previous.cost_per_message),
+            }
+            campaigns = level_rows(session, ws.id, "campanas", since, until)
+            ads = level_rows(session, ws.id, "anuncios", since, until, campaign_id)
+            organic = [
+                {"formato": f["name"], "publicaciones": f["count"], "vistas_prom": f["avg_views"]}
+                for f in build_dashboard(session, ws.id, since, until)["formats"]
+            ]
+            facts = ads_facts(totals, previous, changes, campaigns, ads, organic, since, until)
+            key = f"{periodo}|{since}|{until}|{campaign_id or ''}"
+            try:
+                request_advice(session, ws.id, settings, "publicidad", key, facts)
+            except AiWriterError as exc:
+                return back(target, f"No se pudo analizar: {exc}")
+        return back(target + "#analisis", "Análisis listo")
 
     @app.post("/publicidad/actualizar")
     def ads_sync(next: str = Form("/publicidad")):

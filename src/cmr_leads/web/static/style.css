@@ -390,3 +390,27 @@ th.num, td.num { text-align: right; white-space: nowrap; }
   .ads-best-worst { grid-template-columns: minmax(0, 1fr); }
   .ads-spark { height: 110px; }
 }
+
+/* ---------------- Gráficos y análisis (Publicidad e Instagram) ---------------- */
+.chart-box { position: relative; height: 280px; }
+.chart-box.short { height: 220px; }
+.chart-box canvas { max-width: 100%; }
+.kpis.compact .kpi { padding: 12px 14px; box-shadow: none; }
+.kpis.compact .kpi .value { font-size: 22px; }
+.advice-card { margin-top: 16px; border-left: 4px solid var(--cmr-azul); }
+.advice-card .card-head { flex-wrap: wrap; gap: 8px; }
+.advice-decision { font-size: 18px; font-weight: 700; color: var(--cmr-navy); margin: 0 0 6px; }
+.advice-actions { margin: 8px 0 12px; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.advice-actions li span { display: block; margin-top: 2px; }
+.ig-heat summary { cursor: pointer; color: var(--cmr-azul); font-weight: 600; margin-top: 12px; }
+table.heat td, table.heat th { text-align: center; white-space: nowrap; }
+table.heat th:first-child { text-align: left; }
+.heat-1 { background: #EAF0FF; }
+.heat-2 { background: #C9D8FF; }
+.heat-3 { background: #9DB8FF; }
+.heat-4 { background: #6F95FF; color: #0A1F44; font-weight: 700; }
+button[data-busy][disabled] { opacity: .7; }
+@media (max-width: 720px) {
+  .chart-box { height: 240px; }
+  .chart-box.short { height: 200px; }
+}
