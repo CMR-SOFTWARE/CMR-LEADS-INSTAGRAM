@@ -353,3 +353,50 @@ def test_instagram_calendar_page_and_ics(web):
     assert ics.status_code == 200
     assert ics.headers["content-type"].startswith("text/calendar")
     assert "BEGIN:VEVENT" in ics.text and "Instagram: subir" in ics.text
+
+
+def test_instagram_calendar_changes_endpoint(web):
+    from cmr_leads.instagram.stats import local_now
+
+    today = local_now().date()
+    nxt = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    mes = f"{nxt:%Y-%m}"
+    day = nxt + timedelta(days=9)
+
+    r = web.post(
+        "/instagram/calendario/cambio",
+        data={
+            "accion": "agregar",
+            "dia": day.isoformat(),
+            "hora": "11",
+            "formato": "carrusel",
+            "mes": mes,
+        },
+    )
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    page = web.get(f"/instagram/calendario?mes={mes}")
+    assert "📌 Carrusel · 11:00" in page.text
+
+    blocked = (day + timedelta(days=1)).isoformat()
+    assert (
+        web.post(
+            "/instagram/calendario/cambio", data={"accion": "bloquear", "dia": blocked}
+        ).status_code
+        == 200
+    )
+    assert "No disponible" in web.get(f"/instagram/calendario?mes={mes}").text
+
+    past = web.post(
+        "/instagram/calendario/cambio",
+        data={"accion": "agregar", "dia": "2020-01-01", "hora": "11", "formato": "reel"},
+    )
+    assert past.status_code == 400
+
+    assert (
+        web.post(
+            "/instagram/calendario/cambio", data={"accion": "reiniciar", "mes": mes}
+        ).status_code
+        == 200
+    )
+    page = web.get(f"/instagram/calendario?mes={mes}")
+    assert "📌" not in page.text.split("cal-grid")[1] and "No disponible" not in page.text

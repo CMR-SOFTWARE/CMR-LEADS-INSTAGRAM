@@ -1,6 +1,102 @@
 {% extends "base.html" %}
 {% from "_macros.html" import ic %}
 {% block title %}Calendario de Instagram · CMR Lead Finder{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const mes = "{{ c.month.strftime('%Y-%m') }}";
+  const dialog = document.getElementById("cal-dialog");
+  const form = dialog.querySelector("form");
+  const error = dialog.querySelector(".cal-error");
+  let current = null;
+
+  async function send(fields) {
+    const body = new FormData();
+    Object.entries({ mes, ...fields }).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== false) body.append(k, v);
+    });
+    const res = await fetch("/instagram/calendario/cambio", { method: "POST", body });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "No se pudo guardar el cambio");
+    }
+    location.reload();
+  }
+
+  function open(item, isNew) {
+    current = item;
+    error.hidden = true;
+    form.dia.value = item.dia;
+    form.hora.value = String(Math.max(6, item.hora ?? 19));
+    form.formato.value = item.formato || "reel";
+    dialog.querySelector("#cal-dialog-title").textContent = isNew ? "Agregar publicación" : "Mover o cambiar publicación";
+    dialog.querySelector('[data-act="quitar"]').hidden = isNew;
+    dialog.querySelector('[data-act="recomendado"]').hidden = !item.recomendado;
+    dialog.showModal();
+  }
+
+  async function act(fields) {
+    try { await send(fields); }
+    catch (e) { error.textContent = e.message; error.hidden = false; }
+  }
+
+  dialog.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-act]");
+    if (!btn) return;
+    const a = btn.dataset.act;
+    if (a === "cerrar") return dialog.close();
+    const base = { id: current.id, origen: current.origen, formato: current.formato };
+    if (a === "guardar") {
+      act({ ...base, accion: current.nuevo ? "agregar" : "mover", dia: form.dia.value, hora: form.hora.value, formato: form.formato.value });
+    } else if (a === "quitar") {
+      act({ ...base, accion: "quitar" });
+    } else if (a === "recomendado") {
+      act({ id: current.id, accion: "recomendado" });
+    }
+  });
+
+  document.querySelectorAll("[data-item]").forEach((chip) => {
+    const item = JSON.parse(chip.dataset.item);
+    chip.addEventListener("click", () => open(item, false));
+    chip.addEventListener("dragstart", (ev) => {
+      ev.dataTransfer.setData("text/plain", chip.dataset.item);
+      ev.dataTransfer.effectAllowed = "move";
+      chip.classList.add("dragging");
+    });
+    chip.addEventListener("dragend", () => chip.classList.remove("dragging"));
+  });
+
+  document.querySelectorAll("[data-drop]").forEach((cell) => {
+    cell.addEventListener("dragover", (ev) => { ev.preventDefault(); cell.classList.add("drop"); });
+    cell.addEventListener("dragleave", () => cell.classList.remove("drop"));
+    cell.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      cell.classList.remove("drop");
+      const item = JSON.parse(ev.dataTransfer.getData("text/plain") || "{}");
+      if (!item.formato || item.dia === cell.dataset.drop) return;
+      send({ accion: "mover", id: item.id, origen: item.origen, dia: cell.dataset.drop, hora: item.hora, formato: item.formato })
+        .catch((e) => alert(e.message));
+    });
+  });
+
+  document.querySelectorAll("[data-cal-add]").forEach((btn) => {
+    btn.addEventListener("click", () => open({ dia: btn.dataset.calAdd, hora: 19, formato: "reel", nuevo: true }, true));
+  });
+  document.querySelectorAll("[data-cal-block]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const blocked = btn.dataset.blocked === "1";
+      send({ accion: blocked ? "desbloquear" : "bloquear", dia: btn.dataset.calBlock }).catch((e) => alert(e.message));
+    });
+  });
+  const reset = document.querySelector("[data-cal-reset]");
+  if (reset) reset.addEventListener("click", () => {
+    if (confirm("¿Borrar todos los cambios de este mes y volver a lo recomendado?")) {
+      send({ accion: "reiniciar" }).catch((e) => alert(e.message));
+    }
+  });
+})();
+</script>
+{% endblock %}
 {% set conf_chip = {"alta": "green", "media": "amber", "baja": ""} %}
 {% block content %}
 <div class="page-head">
@@ -67,8 +163,13 @@
 </div>
 
 <div class="card" style="margin-top:16px">
+  <div class="cal-tools">
+    <p class="muted small" style="margin:0"><b>Podés acomodarlo:</b> arrastrá una publicación a otro día o tocala para cambiar el día, la hora o el formato. Lo que fijes queda guardado y el resto del mes se reprograma alrededor.</p>
+    {% if c.changes %}<button type="button" class="btn" data-cal-reset>Volver todo a lo recomendado</button>{% endif %}
+  </div>
   <div class="cal-legend muted small">
-    <span><span class="cal-chip k-reel">Reel</span> <span class="cal-chip k-carrusel">Carrusel</span> <span class="cal-chip k-imagen">Imagen</span> <span class="cal-chip k-historia">Historias</span> <span class="cal-chip k-test">Prueba</span> lo que conviene subir</span>
+    <span><span class="cal-chip k-reel">Reel</span> <span class="cal-chip k-carrusel">Carrusel</span> <span class="cal-chip k-imagen">Imagen</span> <span class="cal-chip k-historia">Historias</span> <span class="cal-chip k-test">Prueba</span> recomendado</span>
+    <span><span class="cal-chip k-reel fixed">📌 Reel</span> fijado por vos</span>
     <span><span class="cal-done ok">✓</span> lo que subiste ese día</span>
   </div>
   <div class="cal-grid" role="table" aria-label="Calendario de {{ c.title }}">
@@ -76,11 +177,26 @@
     {% for row in c.weeks %}
     <div class="cal-row" role="row">
       {% for cell in row %}
-      <div class="cal-cell{{ ' out' if not cell.in_month }}{{ ' past' if cell.past }}{{ ' today' if cell.today }}" role="cell">
-        <div class="cal-date"><span class="cal-wd">{{ c.weekdays[cell.date.weekday()] }}</span> {{ cell.date.day }}</div>
+      {% set editable = cell.in_month and not cell.past %}
+      <div class="cal-cell{{ ' out' if not cell.in_month }}{{ ' past' if cell.past }}{{ ' today' if cell.today }}{{ ' blocked' if cell.blocked }}" role="cell"{% if editable %} data-drop="{{ cell.date.isoformat() }}"{% endif %}>
+        <div class="cal-date">
+          <span><span class="cal-wd">{{ c.weekdays[cell.date.weekday()] }}</span> {{ cell.date.day }}</span>
+          {% if editable %}
+          <span class="cal-day-actions">
+            <button type="button" class="cal-mini" data-cal-add="{{ cell.date.isoformat() }}" title="Agregar una publicación" aria-label="Agregar una publicación el {{ cell.date.day }}">+</button>
+            <button type="button" class="cal-mini" data-cal-block="{{ cell.date.isoformat() }}" data-blocked="{{ 1 if cell.blocked else 0 }}" title="{{ 'Volver a habilitar este día' if cell.blocked else 'No puedo publicar este día' }}" aria-label="{{ 'Habilitar' if cell.blocked else 'Bloquear' }} el {{ cell.date.day }}">{{ "↺" if cell.blocked else "⊘" }}</button>
+          </span>
+          {% endif %}
+        </div>
         {% if cell.in_month %}
+          {% if cell.blocked %}<div class="cal-done miss">No disponible</div>{% endif %}
           {% for i in cell["items"] %}
-          <div class="cal-chip k-{{ 'test' if i.test else i.kind }}" title="{{ i.why }}">{{ i.label }}{{ " (prueba)" if i.test }} · {{ i.time }}</div>
+          {% if editable %}
+          <button type="button" class="cal-chip k-{{ 'test' if i.test else i.kind }}{{ ' fixed' if i.fixed }}" draggable="true" title="{{ i.why }}"
+            data-item='{{ {"id": i.get("id"), "origen": (i.get("origin") or i.date).isoformat(), "dia": i.date.isoformat(), "hora": i.hour, "formato": i.kind, "fijado": i.get("fixed", false), "recomendado": i.get("origin") is not none}|tojson }}'>{{ "📌 " if i.fixed }}{{ i.label }}{{ " (prueba)" if i.test }} · {{ i.time }}</button>
+          {% else %}
+          <div class="cal-chip k-{{ 'test' if i.test else i.kind }}{{ ' fixed' if i.fixed }}" title="{{ i.why }}">{{ "📌 " if i.fixed }}{{ i.label }}{{ " (prueba)" if i.test }} · {{ i.time }}</div>
+          {% endif %}
           {% endfor %}
           <div class="cal-chip k-historia" title="Franjas: {{ cell.stories.slots|join(', ') }}">{{ cell.stories.count }} historias</div>
           {% if cell.past or cell.today %}
@@ -97,12 +213,33 @@
   </div>
 </div>
 
+<dialog class="cal-dialog" id="cal-dialog" aria-labelledby="cal-dialog-title">
+  <form method="dialog">
+    <h2 id="cal-dialog-title">Publicación</h2>
+    <label>Día <input type="date" name="dia" required min="{{ c.today.isoformat() }}"></label>
+    <label>Hora
+      <select name="hora">{% for h in range(6, 24) %}<option value="{{ h }}">{{ "%02d"|format(h) }}:00</option>{% endfor %}</select>
+    </label>
+    <label>Formato
+      <select name="formato">{% for k, v in c.kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    </label>
+    <p class="cal-error" hidden></p>
+    <div class="cal-dialog-actions">
+      <button type="button" class="btn btn-primary" data-act="guardar">Guardar</button>
+      <button type="button" class="btn" data-act="quitar">Quitar</button>
+      <button type="button" class="btn" data-act="recomendado">Volver a lo recomendado</button>
+      <button type="button" class="btn" data-act="cerrar">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <div class="card" style="margin-top:16px">
   <div class="card-head"><h2>Cómo se arma</h2></div>
   <ul class="muted small" style="margin:0; padding-left:18px">
     <li><b>Cuántas por semana:</b> las que venís subiendo en las últimas 8 semanas, con un mínimo de 2 y un máximo de 5.</li>
     <li><b>Qué formato:</b> en proporción a cuántas vistas consigue cada formato sin publicidad.</li>
     <li><b>Qué día y hora:</b> el promedio de vistas de cada día y franja. Cuando hay pocos datos se acerca al promedio general, para que una sola publicación que explotó no defina todo.</li>
+    <li><b>Cuando cambiás algo:</b> lo que fijaste queda fijo y el resto del mes se rearma desde hoy: mantiene la cantidad por semana y la proporción de formatos, separa las publicaciones (también entre semanas) y, si bloqueás días, lo que no entra pasa a otra semana.</li>
     <li><b>La prueba del mes:</b> una publicación va a un día que casi no probaste, para aprender si funciona.</li>
     <li>Que un día rinda más no prueba que el día sea la causa: puede ser el contenido. Por eso se sigue midiendo.</li>
   </ul>

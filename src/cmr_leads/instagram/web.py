@@ -5,7 +5,7 @@ import time
 from datetime import date, timedelta
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from cmr_leads.ads.web import PERIODS, resolve_period
 from cmr_leads.advice import get_advice, request_advice
@@ -287,6 +287,105 @@ def register_instagram_routes(
         with db() as (session, ws):
             c = calendar_for(session, ws.id, mes)
             return render(request, "instagram_calendar.html", active="instagram", c=c)
+
+    @app.post("/instagram/calendario/cambio")
+    def instagram_calendar_change(
+        accion: str = Form(...),
+        id: int | None = Form(None),
+        origen: str = Form(""),
+        dia: str = Form(""),
+        hora: int | None = Form(None),
+        formato: str = Form(""),
+        mes: str = Form(""),
+    ):
+        """Mover, editar, quitar o agregar publicaciones, y bloquear días del calendario."""
+        from datetime import datetime
+
+        from sqlalchemy import delete, select
+
+        from cmr_leads.db.models import InstagramPlanItem
+        from cmr_leads.instagram.calendar import BLOCKED, SHORT
+
+        def parse(value: str) -> datetime | None:
+            try:
+                return datetime.strptime(value, "%Y-%m-%d") if value else None
+            except ValueError:
+                return None
+
+        today = datetime.combine(local_now().date(), datetime.min.time())
+        day, origin = parse(dia), parse(origen)
+        if accion not in {
+            "mover",
+            "quitar",
+            "recomendado",
+            "agregar",
+            "bloquear",
+            "desbloquear",
+            "reiniciar",
+        }:
+            return JSONResponse({"error": "Acción desconocida"}, status_code=400)
+        if accion in {"mover", "agregar"}:
+            if day is None or formato not in SHORT or formato == "historia":
+                return JSONResponse({"error": "Faltan el día o el formato"}, status_code=400)
+            if day < today:
+                return JSONResponse(
+                    {"error": "No se puede planificar en un día que ya pasó"}, status_code=400
+                )
+            if hora is None or not 0 <= hora <= 23:
+                hora = 19
+        if accion in {"bloquear", "desbloquear"} and day is None:
+            return JSONResponse({"error": "Falta el día"}, status_code=400)
+
+        with db() as (session, ws):
+            item = session.get(InstagramPlanItem, id) if id else None
+            if item is not None and item.workspace_id != ws.id:
+                item = None
+            if accion == "mover":
+                if item is None:  # era una recomendación: queda fijada donde la pusiste
+                    item = InstagramPlanItem(workspace_id=ws.id, origin_day=origin)
+                    session.add(item)
+                item.day, item.hour, item.kind, item.removed = day, hora, formato, False
+            elif accion == "agregar":
+                session.add(InstagramPlanItem(workspace_id=ws.id, day=day, hour=hora, kind=formato))
+            elif accion == "quitar":
+                if item is None and origin is not None and formato in SHORT:
+                    session.add(
+                        InstagramPlanItem(
+                            workspace_id=ws.id,
+                            day=origin,
+                            kind=formato,
+                            origin_day=origin,
+                            removed=True,
+                        )
+                    )
+                elif item is not None and item.origin_day is not None:
+                    item.day, item.removed = item.origin_day, True
+                elif item is not None:
+                    session.delete(item)
+            elif accion == "recomendado" and item is not None:
+                session.delete(item)
+            elif accion == "bloquear":
+                session.add(InstagramPlanItem(workspace_id=ws.id, day=day, kind=BLOCKED))
+            elif accion == "desbloquear":
+                session.execute(
+                    delete(InstagramPlanItem).where(
+                        InstagramPlanItem.workspace_id == ws.id,
+                        InstagramPlanItem.kind == BLOCKED,
+                        InstagramPlanItem.day == day,
+                    )
+                )
+            elif accion == "reiniciar":
+                c = calendar_for(session, ws.id, mes)
+                first, last = c["weeks"][0][0]["date"], c["weeks"][-1][-1]["date"]
+                start = datetime.combine(first, datetime.min.time())
+                end = datetime.combine(last, datetime.min.time())
+                for row in session.scalars(
+                    select(InstagramPlanItem).where(InstagramPlanItem.workspace_id == ws.id)
+                ):
+                    days = [d for d in (row.day, row.origin_day) if d is not None]
+                    if any(start <= d <= end for d in days):
+                        session.delete(row)
+        return JSONResponse({"ok": True})
 
     @app.get("/instagram/calendario.ics")
     def instagram_calendar_ics(mes: str = ""):

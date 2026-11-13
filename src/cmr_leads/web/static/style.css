@@ -482,3 +482,25 @@ button[data-busy][disabled] { opacity: .7; }
   .cal-wd { display: inline; font-weight: 600; }
 }
 .cal-cell.past .cal-chip { opacity: .45; }
+
+/* Calendario editable */
+.cal-tools { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+.cal-date { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.cal-day-actions { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.cal-cell:hover .cal-day-actions, .cal-cell:focus-within .cal-day-actions { opacity: 1; }
+@media (hover: none) { .cal-day-actions { opacity: 1; } }
+.cal-mini { width: 22px; height: 22px; border: 0; border-radius: 6px; background: var(--cmr-fondo-icono, #EEF2FB); color: var(--cmr-azul); font-weight: 700; cursor: pointer; line-height: 1; }
+.cal-mini:hover { background: var(--cmr-azul); color: #fff; }
+button.cal-chip { border: 0; width: 100%; text-align: left; font-family: inherit; cursor: grab; }
+button.cal-chip:hover { filter: brightness(.95); outline: 1px solid currentColor; }
+.cal-chip.fixed { box-shadow: inset 3px 0 0 currentColor; }
+.cal-chip.dragging { opacity: .4; }
+.cal-cell.drop { outline: 2px dashed var(--cmr-azul); outline-offset: -2px; background: #F3F6FF; }
+.cal-cell.blocked { background: repeating-linear-gradient(135deg, #fafbfd, #fafbfd 6px, #f0f2f7 6px, #f0f2f7 12px); }
+.cal-dialog { border: 0; border-radius: 16px; padding: 22px; width: min(380px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(10,31,68,.25); }
+.cal-dialog::backdrop { background: rgba(10,31,68,.35); }
+.cal-dialog h2 { margin: 0 0 12px; font-size: 18px; }
+.cal-dialog label { display: grid; gap: 4px; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.cal-dialog input, .cal-dialog select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--cmr-borde, #D8DEEA); font: inherit; font-weight: 400; }
+.cal-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.cal-error { color: #B42318; font-size: 13px; }

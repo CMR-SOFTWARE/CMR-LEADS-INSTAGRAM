@@ -19,10 +19,10 @@ from datetime import date, datetime, timedelta
 from math import expm1, log1p, sqrt
 from statistics import mean, median, pstdev
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from cmr_leads.db.models import InstagramPost
+from cmr_leads.db.models import InstagramPlanItem, InstagramPost
 from cmr_leads.instagram.dashboard import SLOTS, WEEKDAYS, slot_of, stories_tracked_since
 from cmr_leads.instagram.promote import match_post
 from cmr_leads.instagram.stats import to_local
@@ -204,14 +204,20 @@ def month_sequence(stats: Stats, per_week: int, weeks: int) -> list[list[str]]:
     return [sequence[i * per_week : (i + 1) * per_week] for i in range(weeks)]
 
 
-def plan_week(stats: Stats, mix: list[str]) -> list[dict]:
-    """Elige el día de cada publicación de la semana, separándolas para no amontonar."""
-    used: set[int] = set()
+def plan_week(
+    stats: Stats, mix: list[str], blocked: set[int] = frozenset(), fixed: set[int] = frozenset()
+) -> list[dict]:
+    """Elige el día de cada publicación de la semana, separándolas para no amontonar.
+
+    `blocked` son días que no se pueden usar y `fixed` días que ya tienen algo fijado a mano:
+    lo recomendado se reubica alrededor de eso.
+    """
+    used: set[int] = set(fixed)
     plan = []
     for kind in mix:
         options = []
         for d in range(7):
-            if d in used:
+            if d in used or d in blocked:
                 continue
             score, n = stats.day_score(kind, d)
             crowded = any(abs(d - u) == 1 for u in used)  # días pegados rinden menos
@@ -235,12 +241,12 @@ def plan_week(stats: Stats, mix: list[str]) -> list[dict]:
     return plan
 
 
-def test_slot(stats: Stats, plan: list[dict]) -> dict | None:
+def test_slot(stats: Stats, plan: list[dict], unavailable: set[int] = frozenset()) -> dict | None:
     """Una prueba por mes: el mejor formato en el día que menos se probó."""
     if not plan:
         return None
     kind = plan[0]["kind"]
-    used = {p["weekday"] for p in plan}
+    used = {p["weekday"] for p in plan} | set(unavailable)
     free = [d for d in range(7) if d not in used and d < 5] or [
         d for d in range(7) if d not in used
     ]
@@ -306,6 +312,147 @@ def _why(item: dict, stats: Stats) -> str:
     return text
 
 
+def _interleave(counts: dict[str, int]) -> list[str]:
+    """Intercala los formatos (reparto ponderado) para que no se amontone uno solo."""
+    counts = {k: v for k, v in counts.items() if v > 0}
+    total = sum(counts.values())
+    current = dict.fromkeys(counts, 0)
+    sequence = []
+    for _ in range(total):
+        for k in current:
+            current[k] += counts[k]
+        pick = max(current, key=lambda k: (current[k], counts[k]))
+        current[pick] -= total
+        sequence.append(pick)
+    return sequence
+
+
+def plan_days(
+    stats: Stats, kinds: list[str], open_days: list[date], taken: set[date]
+) -> list[dict]:
+    """Pone cada formato en el mejor día libre, lejos de lo que ya hay (también de otras semanas)."""
+    plan = []
+    for kind in kinds:
+        options = []
+        for d in open_days:
+            if d in taken:
+                continue
+            score, n = stats.day_score(kind, d.weekday())
+            near = (d - timedelta(days=1)) in taken or (d + timedelta(days=1)) in taken
+            rank = stats.day_rank(kind, d.weekday()) - (0.15 if near else 0.0)
+            options.append((rank, score, n, d))
+        if not options:
+            break
+        _rank, score, n, day = max(options)
+        taken.add(day)
+        slot, slot_n = stats.best_slot(kind)
+        plan.append(
+            {
+                "kind": kind,
+                "date": day,
+                "weekday": day.weekday(),
+                "slot": slot,
+                "hour": stats.hour_for(kind, slot),
+                "expected": round(score),
+                "samples": n,
+                "slot_samples": slot_n,
+            }
+        )
+    return plan
+
+
+def plan_month(stats: Stats, month: date, month_weeks, per_week: int, changes: list, today: date):
+    """Arma el mes a partir de lo fijado a mano y de lo que queda por delante.
+
+    - Solo recomienda en días que todavía no pasaron.
+    - Cada semana apunta a `per_week` (proporcional si la semana está cortada por el mes o por hoy).
+    - Lo que se movió, editó o quitó deja de contar en la semana de donde salió.
+    - El reparto de formatos es del MES completo contando lo que fijaste: si cambiaste un reel
+      por un carrusel, otra recomendación vuelve a ser reel para mantener la proporción.
+    - Si una semana no tiene lugar (días bloqueados o fijados), lo que sobra pasa a otra semana.
+    - Todo queda separado de lo fijado, aunque esté en la semana de al lado.
+    """
+    in_month = [d for days in month_weeks for d in days if d.month == month.month]
+    fixed = [c for c in changes if c.kind in SHORT and not c.removed and c.day.date() in in_month]
+    blocked = {c.day.date() for c in changes if c.kind == BLOCKED}
+    taken = {c.day.date() for c in fixed}
+
+    open_by_week, base = [], []
+    for days in month_weeks:
+        ahead = [d for d in days if d.month == month.month and d >= today]
+        open_by_week.append([d for d in ahead if d not in blocked and d not in taken])
+        base.append(round(per_week * len(ahead) / 7))
+    week_of = {d: w for w, days in enumerate(month_weeks) for d in days}
+    for c in changes:
+        if c.kind != BLOCKED and c.origin_day is not None:
+            w = week_of.get(c.origin_day.date())
+            if w is not None and c.origin_day.date() >= today:
+                base[w] = max(0, base[w] - 1)
+
+    auto_total = sum(base)
+    counts: dict[str, int] = defaultdict(int)
+    for kind in weekly_mix(stats, auto_total + len(fixed)) if auto_total else []:
+        counts[kind] += 1
+    for c in fixed:  # lo fijado ya ocupa su parte del reparto
+        if counts.get(c.kind, 0) > 0:
+            counts[c.kind] -= 1
+        elif any(counts.values()):
+            counts[max(counts, key=counts.get)] -= 1
+    sequence = _interleave(counts)
+
+    plans: list[list[dict]] = [[] for _ in month_weeks]
+    carry: list[str] = []
+    pos = 0
+    for w, open_days in enumerate(open_by_week):
+        kinds = carry + sequence[pos : pos + base[w]]
+        pos += base[w]
+        plans[w] = plan_days(stats, kinds, open_days, taken)
+        carry = kinds[len(plans[w]) :]
+    for w, open_days in enumerate(open_by_week):  # lo que no entró va donde haya lugar
+        if not carry:
+            break
+        extra = plan_days(stats, carry, open_days, taken)
+        plans[w] += extra
+        carry = carry[len(extra) :]
+
+    fixed_by_week = [[c for c in fixed if c.day.date() in set(days)] for days in month_weeks]
+
+    # Una prueba por mes: el mejor formato en el día menos probado que quede libre.
+    test = None
+    best = weekly_mix(stats, 1)[0] if stats.posts else "reel"
+    free = [
+        d
+        for days in open_by_week
+        for d in days
+        if d not in taken
+        and (d - timedelta(days=1)) not in taken
+        and (d + timedelta(days=1)) not in taken
+    ]
+    weekdays = [d for d in free if d.weekday() < 5] or free
+    if weekdays:
+        day = min(
+            weekdays,
+            key=lambda d: (
+                stats.day_score(best, d.weekday())[1],
+                -stats.day_score(best, d.weekday())[0],
+                d,
+            ),
+        )
+        slot, _n = stats.best_slot(best)
+        score, n = stats.day_score(best, day.weekday())
+        test = {
+            "kind": best,
+            "date": day,
+            "weekday": day.weekday(),
+            "slot": slot,
+            "hour": stats.hour_for(best, slot),
+            "expected": round(score),
+            "samples": n,
+            "test": True,
+        }
+    return plans, fixed_by_week, blocked, test
+
+
 def build_calendar(
     session: Session, workspace_id: int, month: date, today: date, ad_names: list[str]
 ) -> dict:
@@ -323,8 +470,10 @@ def build_calendar(
     current_per_week = len(recent) / RECENT_WEEKS
     per_week = min(max(round(current_per_week), MIN_PER_WEEK), MAX_PER_WEEK)
     month_weeks = cal.Calendar(firstweekday=0).monthdatescalendar(month.year, month.month)
-    plans = [plan_week(stats, mix) for mix in month_sequence(stats, per_week, len(month_weeks))]
-    test = test_slot(stats, plans[0] if plans else [])
+    changes = load_changes(session, workspace_id, month_weeks[0][0], month_weeks[-1][-1])
+    plans, fixed_by_week, blocked_days, test = plan_month(
+        stats, month, month_weeks, per_week, changes, today
+    )
     for item in [i for plan in plans for i in plan] + ([test] if test else []):
         item["why"] = _why(item, stats)
         item["label"] = SHORT[item["kind"]]
@@ -358,7 +507,6 @@ def build_calendar(
                 {"kind": kind, "time": f"{local:%H:%M}", "views": _views(p)}
             )
 
-    test_week = 1  # la prueba va en la segunda semana del mes
     weeks = []
     for w_index, days in enumerate(month_weeks):
         row = []
@@ -366,9 +514,11 @@ def build_calendar(
             in_month = d.month == month.month
             items = []
             if in_month:
-                items = [i for i in plans[w_index] if i["weekday"] == d.weekday()]
-                if test and w_index == test_week and test["weekday"] == d.weekday():
+                items = [i for i in plans[w_index] if i["date"] == d]
+                if test and test["date"] == d:
                     items = items + [test]
+                items += [_fixed_item(c) for c in fixed_by_week[w_index] if c.day.date() == d]
+                items.sort(key=lambda i: i["hour"])
             done = actual.get(d, [])
             feed_done = [a for a in done if a["kind"] != "historia"]
             row.append(
@@ -376,6 +526,7 @@ def build_calendar(
                     "date": d,
                     "in_month": in_month,
                     "past": d < today,
+                    "blocked": d in blocked_days,
                     "today": d == today,
                     "items": items,
                     "stories": st if in_month else None,
@@ -411,6 +562,46 @@ def build_calendar(
         "overall": round(stats.overall),
         "inspiration": inspiration,
         "weekdays": WEEKDAYS,
+        "today": today,
+        "changes": len(changes),
+        "kinds": {k: v for k, v in SHORT.items() if k != "historia"},
+    }
+
+
+BLOCKED = "bloqueado"
+
+
+def load_changes(session: Session, workspace_id: int, first: date, last: date) -> list:
+    """Cambios hechos a mano que tocan las semanas que se muestran."""
+    start = datetime.combine(first, datetime.min.time())
+    end = datetime.combine(last + timedelta(days=1), datetime.min.time())
+    item = InstagramPlanItem
+    return list(
+        session.scalars(
+            select(item).where(
+                item.workspace_id == workspace_id,
+                or_(
+                    and_(item.day >= start, item.day < end),
+                    and_(item.origin_day >= start, item.origin_day < end),
+                ),
+            )
+        )
+    )
+
+
+def _fixed_item(c) -> dict:
+    hour = c.hour if c.hour is not None else 19
+    return {
+        "id": c.id,
+        "kind": c.kind,
+        "label": SHORT[c.kind],
+        "hour": hour,
+        "time": f"{hour:02d}:00",
+        "date": c.day.date(),
+        "fixed": True,
+        "origin": c.origin_day.date() if c.origin_day else None,
+        "why": "Lo fijaste vos. El resto del mes se acomoda alrededor.",
+        "confidence": None,
     }
 
 
@@ -420,7 +611,7 @@ def _pattern(weeks: list[list[dict]]) -> list[dict]:
     for row in weeks:
         for cell in row:
             for i in cell["items"]:
-                if i.get("test"):
+                if i.get("test") or i.get("fixed"):
                     continue
                 key = (i["kind"], i["weekday"], i["time"])
                 seen.setdefault(key, {**i, "times": 0})["times"] += 1

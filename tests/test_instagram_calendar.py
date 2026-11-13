@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from cmr_leads.db.models import InstagramPost
+from cmr_leads.db.models import InstagramPlanItem, InstagramPost
 from cmr_leads.instagram.calendar import Stats, build_calendar, plan_week, to_ics, weekly_mix
 
 TODAY = date(2026, 11, 13)
@@ -75,7 +75,141 @@ def test_build_calendar_month_marks_what_was_posted(session, workspace):
     assert cells[date(2026, 11, 3)]["done"][0]["kind"] == "reel"
     assert cells[date(2026, 11, 12)]["stories_done"] == 1
     planned = sum(len(cell["items"]) for cell in cells.values() if cell["in_month"])
-    assert planned >= c["per_week"] * 4
+    assert planned >= 4  # del 13 al 30 de noviembre
+    assert not any(cell["items"] for d, cell in cells.items() if d < TODAY)  # nada en el pasado
     assert c["test"] is not None and c["test"]["test"]
     ics = to_ics(c, "CMR")
     assert ics.startswith("BEGIN:VCALENDAR") and ics.count("BEGIN:VEVENT") >= planned + 30
+
+
+def _seed(session, workspace):
+    for i in range(10):
+        d = date(2026, 9, 1) + timedelta(days=i * 6)
+        session.add(make(workspace, i, _utc(d, 18), 500 + i * 30, "reel" if i % 2 else "imagen"))
+    session.flush()
+
+
+def _cells(c):
+    return {cell["date"]: cell for row in c["weeks"] for cell in row if cell["in_month"]}
+
+
+def _dt(d: date) -> datetime:
+    return datetime(d.year, d.month, d.day)
+
+
+def test_moving_a_recommendation_reprograms_the_week(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    before = build_calendar(session, workspace.id, month, TODAY, [])
+    week = before["weeks"][2]  # semana completa del medio del mes
+    auto = [(cell["date"], i) for cell in week for i in cell["items"] if not i.get("test")]
+    origin, item = auto[0]
+    others_before = len(auto)
+    target = next(cell["date"] for cell in week if not cell["items"] and cell["date"] != origin)
+
+    session.add(
+        InstagramPlanItem(
+            workspace_id=workspace.id, day=_dt(target), hour=10, kind=item["kind"],
+            origin_day=_dt(origin),
+        )
+    )  # fmt: skip
+    session.flush()
+    after = build_calendar(session, workspace.id, month, TODAY, [])
+    cells = _cells(after)
+    fixed = [i for i in cells[target]["items"] if i.get("fixed")]
+    assert fixed and fixed[0]["time"] == "10:00" and fixed[0]["kind"] == item["kind"]
+    week_items = [i for cell in after["weeks"][2] for i in cell["items"] if not i.get("test")]
+    assert len(week_items) == others_before  # se movió, no se duplicó
+
+
+def test_blocked_day_moves_the_recommendation_elsewhere(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    before = build_calendar(session, workspace.id, month, TODAY, [])
+    week = before["weeks"][2]
+    day = next(cell["date"] for cell in week if any(not i.get("test") for i in cell["items"]))
+    count = sum(len([i for i in cell["items"] if not i.get("test")]) for cell in week)
+
+    session.add(InstagramPlanItem(workspace_id=workspace.id, day=_dt(day), kind="bloqueado"))
+    session.flush()
+    after = build_calendar(session, workspace.id, month, TODAY, [])
+    cells = _cells(after)
+    assert cells[day]["blocked"] and not cells[day]["items"]
+    week_after = after["weeks"][2]
+    assert sum(len([i for i in c["items"] if not i.get("test")]) for c in week_after) == count
+
+
+def test_removed_recommendation_is_not_replaced(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    week = build_calendar(session, workspace.id, month, TODAY, [])["weeks"][2]
+    origin, item = next(
+        (cell["date"], i) for cell in week for i in cell["items"] if not i.get("test")
+    )
+    count = sum(len([i for i in c["items"] if not i.get("test")]) for c in week)
+    session.add(
+        InstagramPlanItem(
+            workspace_id=workspace.id, day=_dt(origin), kind=item["kind"],
+            origin_day=_dt(origin), removed=True,
+        )
+    )  # fmt: skip
+    session.flush()
+    week = build_calendar(session, workspace.id, month, TODAY, [])["weeks"][2]
+    assert sum(len([i for i in c["items"] if not i.get("test")]) for c in week) == count - 1
+
+
+def test_changing_format_rebalances_the_rest_of_the_month(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    before = build_calendar(session, workspace.id, month, TODAY, [])
+    kinds_before = sorted(
+        i["kind"] for row in before["weeks"] for c in row for i in c["items"] if not i.get("test")
+    )
+    origin, item = next(
+        (c["date"], i) for c in before["weeks"][1] for i in c["items"] if not i.get("test")
+    )
+    other = "imagen" if item["kind"] == "reel" else "reel"
+    session.add(
+        InstagramPlanItem(
+            workspace_id=workspace.id, day=_dt(origin), hour=12, kind=other,
+            origin_day=_dt(origin),
+        )
+    )  # fmt: skip
+    session.flush()
+    after = build_calendar(session, workspace.id, month, TODAY, [])
+    kinds_after = sorted(
+        i["kind"] for row in after["weeks"] for c in row for i in c["items"] if not i.get("test")
+    )
+    # Mismo total y misma proporción de formatos en el mes: el resto se reacomodó.
+    assert kinds_after == kinds_before
+
+
+def test_full_blocked_week_moves_posts_to_other_weeks(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    before = build_calendar(session, workspace.id, month, TODAY, [])
+    total = sum(len(c["items"]) for row in before["weeks"] for c in row if not c["blocked"])
+    for c in before["weeks"][2]:
+        session.add(
+            InstagramPlanItem(workspace_id=workspace.id, day=_dt(c["date"]), kind="bloqueado")
+        )
+    session.flush()
+    after = build_calendar(session, workspace.id, month, TODAY, [])
+    assert not any(c["items"] for c in after["weeks"][2])
+    total_after = sum(len(c["items"]) for row in after["weeks"] for c in row)
+    assert total_after == total
+
+
+def test_posts_are_not_glued_to_a_fixed_post_in_the_next_week(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    week = build_calendar(session, workspace.id, month, TODAY, [])["weeks"][2]
+    monday = week[0]["date"]
+    session.add(InstagramPlanItem(workspace_id=workspace.id, day=_dt(monday), hour=18, kind="reel"))
+    session.flush()
+    after = build_calendar(session, workspace.id, month, TODAY, [])
+    sunday_before = after["weeks"][1][6]
+    tuesday = after["weeks"][2][1]
+    glued = [i for c in (sunday_before, tuesday) for i in c["items"] if not i.get("test")]
+    free_days = [c for row in after["weeks"] for c in row if c["in_month"] and not c["items"]]
+    assert not glued or len(free_days) < 3

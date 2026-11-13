@@ -540,3 +540,25 @@ class Advice(Base):
     key: Mapped[str] = mapped_column(String(200))  # filtros: período, campaña, formato
     data: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class InstagramPlanItem(Base):
+    """Un cambio hecho a mano en el calendario de Instagram.
+
+    - kind = reel | carrusel | imagen: publicación fijada en `day` a la hora `hour`.
+      Si vino de mover o editar una recomendación, `origin_day` es el día donde estaba:
+      esa semana ya no la vuelve a recomendar. Sin `origin_day` es una publicación agregada.
+    - removed = True: la recomendación de `origin_day` se quitó (no se reubica).
+    - kind = bloqueado: ese día no se puede publicar; lo recomendado se reubica en otro día.
+    """
+
+    __tablename__ = "instagram_plan_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    day: Mapped[datetime] = mapped_column(DateTime)
+    hour: Mapped[int | None] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(20))
+    origin_day: Mapped[datetime | None] = mapped_column(DateTime)
+    removed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
