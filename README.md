@@ -169,6 +169,22 @@ el plan del scoring por reglas y la clasificación de respuestas por palabras cl
 mandan teléfonos, emails ni documentos (se recortan antes) y nunca envía nada sola.
 `ANTHROPIC_API_KEY` queda como alternativa para clasificar respuestas.
 
+## Publicidad en Meta (opcional)
+
+Sección **Publicidad** del panel (`/publicidad`): lee las campañas de CMR en Instagram y Facebook
+con la API de marketing de Meta (solo lectura) y guarda el histórico en la base local.
+
+- **Resumen y campañas**: inversión, alcance, clics, mensajes y costo por mensaje, con filtro de
+  fechas y detalle por campaña, conjunto o anuncio.
+- **Alertas**: sin saldo, anuncio rechazado, costo por mensaje en alza y errores al actualizar.
+- **Reporte mensual** con comparación, mejores y peores anuncios, recomendaciones y PDF con la marca
+  de CMR (se genera solo desde el día 2).
+- **Checklist** de configuración publicitaria con estado y notas.
+
+Se activa con `META_ADS_ACCESS_TOKEN` y `META_AD_ACCOUNT_ID` en `.env` (token de un usuario del
+sistema de una app de Meta aparte, con `ads_read` y `business_management`). Se actualiza sola cada
+6 horas con la app abierta. Guía completa: [`docs/publicidad-meta.md`](docs/publicidad-meta.md).
+
 ## Contacto: WhatsApp
 
 `cmr-leads message <id>` genera un **borrador** según el servicio sugerido y un **link click-to-chat**

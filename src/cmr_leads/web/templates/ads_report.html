@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ic %}
+{% block title %}Reporte {{ d.label }} · CMR Lead Finder{% endblock %}
+{% macro delta(value, lower_is_better=false) -%}
+  {%- if value is not none -%}
+    {%- set good = (value < 0) if lower_is_better else (value > 0) -%}
+    <span class="{{ 'delta-up' if good else ('delta-down' if value != 0 else 'muted') }} small">{{ "%+.0f"|format(value * 100) }}%</span>
+  {%- endif -%}
+{%- endmacro %}
+{% macro ads_table(ads) -%}
+  {% if ads %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Anuncio</th><th class="num">Inversión</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th></tr></thead>
+    <tbody>
+    {% for a in ads %}
+    <tr>
+      <td>{{ a.name }}{% if a.campaign %}<div class="muted small">{{ a.campaign }}</div>{% endif %}</td>
+      <td class="num">{{ a.spend|money }}</td>
+      <td class="num">{{ a.messages|num }}</td>
+      <td class="num">{{ a.cost_per_message|money if a.messages else "sin mensajes" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted" style="margin:0">No hay más anuncios para comparar este mes.</p>{% endif %}
+{%- endmacro %}
+{% block content %}
+{% include "_ads_nav.html" %}
+
+<div class="card-head ads-report-head">
+  <h2>Reporte de {{ d.label }}</h2>
+  <div class="row-actions">
+    <form method="post" action="/publicidad/reportes/generar"><input type="hidden" name="mes" value="{{ report.month }}"><button class="btn btn-sm">{{ ic("refresh-cw") }} Volver a generar</button></form>
+    <a class="btn btn-primary btn-sm" href="/publicidad/reportes/{{ report.month }}/pdf">{{ ic("file-down") }} Descargar PDF</a>
+  </div>
+</div>
+<p class="muted small">Generado el {{ generated.strftime("%d/%m/%Y %H:%M") }} (UTC). Comparado con {{ d.previous_label }}.</p>
+
+<div class="kpis">
+  <div class="kpi accent"><div class="value">{{ d.totals.spend|money }}</div><div class="label">Inversión {{ delta(d.changes.spend) }}</div></div>
+  <div class="kpi"><div class="value">{{ d.totals.reach|num }}</div><div class="label">Alcance {{ delta(d.changes.reach) }}</div></div>
+  <div class="kpi"><div class="value">{{ d.totals.link_clicks|num }}</div><div class="label">Clics al enlace {{ delta(d.changes.link_clicks) }}</div></div>
+  <div class="kpi"><div class="value">{{ d.totals.messages|num }}</div><div class="label">Mensajes {{ delta(d.changes.messages) }}</div></div>
+  <div class="kpi"><div class="value">{{ d.totals.cost_per_message|money }}</div><div class="label">Costo por mensaje {{ delta(d.changes.cost_per_message, true) }}</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Recomendaciones para el mes que viene</h2></div>
+  <ol class="ads-recs">{% for r in d.recommendations %}<li>{{ r.texto }}</li>{% endfor %}</ol>
+</div>
+
+<div class="grid grid-2 ads-best-worst" style="margin-top:16px">
+  <div class="card"><div class="card-head"><h2>Los 3 mejores anuncios</h2></div>{{ ads_table(d.best_ads) }}</div>
+  <div class="card"><div class="card-head"><h2>Los 3 que menos rindieron</h2></div>{{ ads_table(d.worst_ads) }}</div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Campañas</h2></div>
+  {% if d.campaigns %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Campaña</th><th class="num">Inversión</th><th class="num">Alcance</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th></tr></thead>
+    <tbody>
+    {% for c in d.campaigns %}
+    <tr>
+      <td>{{ c.name }}</td>
+      <td class="num">{{ c.spend|money }}</td>
+      <td class="num">{{ c.reach|num }}</td>
+      <td class="num">{{ c.messages|num }}</td>
+      <td class="num">{{ c.cost_per_message|money if c.messages else "sin mensajes" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted" style="margin:0">Sin campañas con inversión en el mes.</p>{% endif %}
+</div>
+{% endblock %}

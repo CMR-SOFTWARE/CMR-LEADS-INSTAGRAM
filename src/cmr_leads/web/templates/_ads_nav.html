@@ -1,0 +1,20 @@
+{% from "_macros.html" import ic %}
+<div class="page-head">
+  <div>
+    <h1>Publicidad</h1>
+    <p>Anuncios de CMR en Instagram y Facebook: inversión, mensajes y qué conviene cambiar.</p>
+  </div>
+  <form method="post" action="/publicidad/actualizar">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <button class="btn btn-primary" {{ 'disabled' if not configured }}>{{ ic("refresh-cw") }} Actualizar desde Meta</button>
+  </form>
+</div>
+<nav class="tabs" aria-label="Secciones de publicidad">
+  <a href="/publicidad" class="{{ 'active' if tab == 'resumen' }}">Resumen y campañas</a>
+  <a href="/publicidad/alertas" class="{{ 'active' if tab == 'alertas' }}">Alertas{% if alerts_open %} <span class="chip red">{{ alerts_open }}</span>{% endif %}</a>
+  <a href="/publicidad/reportes" class="{{ 'active' if tab == 'reportes' }}">Reportes</a>
+  <a href="/publicidad/configuracion" class="{{ 'active' if tab == 'configuracion' }}">Configuración</a>
+</nav>
+{% if not configured and tab != 'configuracion' %}
+<div class="notice">Falta conectar la cuenta publicitaria. Mirá los pasos en <a href="/publicidad/configuracion">Configuración</a>.</div>
+{% endif %}

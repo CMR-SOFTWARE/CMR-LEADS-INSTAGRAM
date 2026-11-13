@@ -239,6 +239,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             threading.Thread(target=app.state.auto_search, name="auto-search", daemon=True).start()
         if settings.instagram_dm_check_minutes and settings.facebook_page_id:
             threading.Thread(target=app.state.dm_loop, name="instagram-dms", daemon=True).start()
+        if settings.ads_configured and settings.meta_ads_sync_hours:
+            threading.Thread(target=app.state.ads_loop, name="meta-ads", daemon=True).start()
         yield
 
     app = FastAPI(title="CMR Lead Finder", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -1593,5 +1595,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             leads = list(session.scalars(leads_query(ws.id, status=status or None)))
             (export_csv if fmt == "csv" else export_xlsx)(leads, path)
         return FileResponse(path, filename=path.name)
+
+    # ---------------- Publicidad (Meta Ads) ----------------
+    from cmr_leads.ads.web import register_ads_routes
+
+    register_ads_routes(app, settings, templates, db, render, back)
 
     return app

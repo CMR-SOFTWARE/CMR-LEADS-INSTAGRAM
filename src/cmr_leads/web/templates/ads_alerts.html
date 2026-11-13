@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Alertas de publicidad · CMR Lead Finder{% endblock %}
+{% block content %}
+{% include "_ads_nav.html" %}
+<div class="tabs">
+  <a href="/publicidad/alertas" class="{{ 'active' if ver != 'todas' }}">Abiertas</a>
+  <a href="/publicidad/alertas?ver=todas" class="{{ 'active' if ver == 'todas' }}">Todas</a>
+</div>
+
+{% if alerts %}
+<div class="stack ads-alerts">
+  {% for a in alerts %}
+  <div class="card ads-alert {{ a.severity }}{{ ' resolved' if a.status != 'abierta' }}">
+    <div class="card-head">
+      <h2>{{ a.title }}</h2>
+      <span class="chip {{ 'red' if a.severity == 'critica' else 'amber' }}{{ '' if a.status == 'abierta' else ' green' }}">
+        {{ 'Resuelta' if a.status != 'abierta' else ('Urgente' if a.severity == 'critica' else 'Aviso') }}
+      </span>
+    </div>
+    <p style="margin-top:0">{{ a.message }}</p>
+    <div class="row-actions">
+      <span class="muted small">Desde el {{ a.created_at|date }}{% if a.resolved_at %} · resuelta el {{ a.resolved_at|date }}{% endif %}</span>
+      {% if a.status == 'abierta' %}
+      <form method="post" action="/publicidad/alertas/{{ a.id }}/resolver"><button class="btn btn-sm">Marcar como resuelta</button></form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  <p><strong>{{ 'No hay alertas abiertas.' if ver != 'todas' else 'Todavía no hubo alertas.' }}</strong></p>
+  <p class="muted">Se revisan solas cada vez que se actualiza la publicidad.</p>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Qué se revisa</h2></div>
+  <ul class="tips">
+    <li><strong>Sin saldo:</strong> pago pendiente, o cuando al límite de gasto (o al saldo cargado) le quedan menos de {{ low_balance|money }}.</li>
+    <li><strong>Anuncio rechazado:</strong> Meta no aprobó un anuncio o marcó un problema.</li>
+    <li><strong>Costo en alza:</strong> el costo por mensaje de una campaña subió más de {{ cost_pct|round|int }}% (últimos 7 días contra los 7 anteriores).</li>
+    <li><strong>Cuenta no activa</strong> y <strong>errores al actualizar</strong> (por ejemplo, token vencido).</li>
+  </ul>
+  <p class="muted small" style="margin-bottom:0">Si marcás una alerta como resuelta pero el problema sigue, vuelve a aparecer en la próxima actualización. Los valores se cambian en <code>.env</code> (META_ADS_COST_ALERT_PCT y META_ADS_LOW_BALANCE_ARS).</p>
+</div>
+{% endblock %}

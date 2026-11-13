@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Configuración de publicidad · CMR Lead Finder{% endblock %}
+{% block content %}
+{% include "_ads_nav.html" %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Checklist de configuración</h2>
+    <span class="chip {{ 'green' if done == items|length else 'amber' }}">{{ done }} de {{ items|length }} listos</span>
+  </div>
+  <div class="progress" role="progressbar" aria-valuenow="{{ done }}" aria-valuemin="0" aria-valuemax="{{ items|length }}"><div style="width: {{ (done / items|length * 100)|round if items else 0 }}%"></div></div>
+  <div class="stack">
+    {% for item in items %}
+    <form method="post" action="/publicidad/configuracion/{{ item.key }}" class="ads-check">
+      <div class="ads-check-title"><strong>{{ item.sort_order }}. {{ item.title }}</strong></div>
+      <div>
+        <label for="st-{{ item.key }}" class="sr-only">Estado de {{ item.title }}</label>
+        <select id="st-{{ item.key }}" name="status">
+          {% for value, label in CHECKLIST_STATUSES.items() %}<option value="{{ value }}" {{ 'selected' if value == item.status }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="ads-check-notes">
+        <label for="nt-{{ item.key }}" class="sr-only">Notas de {{ item.title }}</label>
+        <input id="nt-{{ item.key }}" type="text" name="notes" value="{{ item.notes or '' }}" placeholder="Notas">
+      </div>
+      <button class="btn btn-sm">Guardar</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head">
+    <h2>Conexión con Meta</h2>
+    <span class="chip {{ 'green' if configured else 'amber' }}">{{ 'Conectada' if configured else 'Pendiente' }}</span>
+  </div>
+  {% if configured %}
+  <p style="margin-top:0">Cuenta publicitaria: <code>{{ account_id }}</code>. El token se lee de <code>.env</code> y nunca se muestra en pantalla.</p>
+  {% endif %}
+  <ol>
+    <li>En <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com</a> creá una app nueva de tipo <strong>Negocio</strong>, conectada al Business Manager de CMR, y agregale el producto <strong>API de marketing</strong>.</li>
+    <li>En el Business Manager: Configuración del negocio &gt; Usuarios &gt; <strong>Usuarios del sistema</strong> &gt; Agregar (rol Administrador).</li>
+    <li>Asignale al usuario del sistema la <strong>cuenta publicitaria</strong> (permiso para ver el rendimiento alcanza) y la app.</li>
+    <li>Tocá <strong>Generar token</strong>, elegí la app, vencimiento <strong>Nunca</strong> y los permisos <code>ads_read</code> y <code>business_management</code>.</li>
+    <li>Pegá en el archivo <code>.env</code> y reiniciá el programa:
+<pre class="code">META_ADS_ACCESS_TOKEN=el_token_generado
+META_AD_ACCOUNT_ID=act_123456789</pre></li>
+  </ol>
+  <p class="muted small" style="margin-bottom:0">El ID de la cuenta está en el Administrador de anuncios, arriba a la izquierda. Si el token se filtra, revocalo desde el mismo lugar donde lo generaste.</p>
+</div>
+{% endblock %}

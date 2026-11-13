@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Publicidad · CMR Lead Finder{% endblock %}
+{% macro delta(value, lower_is_better=false) -%}
+  {%- if value is not none -%}
+    {%- set good = (value < 0) if lower_is_better else (value > 0) -%}
+    <span class="{{ 'delta-up' if good else ('delta-down' if value != 0 else 'muted') }} small">{{ "%+.0f"|format(value * 100) }}%</span>
+  {%- endif -%}
+{%- endmacro %}
+{% macro status_chip(status) -%}
+  {%- set label, color = AD_STATUS_LABELS.get(status, (status or "s/d", "")) -%}
+  <span class="chip {{ color }}">{{ label }}</span>
+{%- endmacro %}
+{% block content %}
+{% include "_ads_nav.html" %}
+
+{% if account %}
+<p class="muted small ads-account">
+  Cuenta <strong>{{ account.name or account.meta_account_id }}</strong>
+  · {{ AD_ACCOUNT_STATUS.get(account.account_status, "Estado s/d") }}
+  {% if account.spend_cap_left is not none %} · Le quedan {{ account.spend_cap_left|money }} del límite de gasto{% endif %}
+  {% if account.funding_display %} · Pago: {{ account.funding_display }}{% endif %}
+  {% if account.last_synced_at %} · Actualizado {{ account.last_synced_at|date }}{% endif %}
+  {% if sync_hours %} · Se actualiza solo cada {{ sync_hours }} h con la app abierta{% endif %}
+</p>
+{% if account.last_sync_error %}<div class="notice">La última actualización falló: {{ account.last_sync_error }}</div>{% endif %}
+{% endif %}
+{% if alerts_open %}<div class="notice">Hay {{ alerts_open }} alerta{{ 's' if alerts_open > 1 }} abierta{{ 's' if alerts_open > 1 }}. <a href="/publicidad/alertas">Ver alertas</a></div>{% endif %}
+
+<form class="ads-filters" method="get" action="/publicidad">
+  <input type="hidden" name="nivel" value="{{ nivel }}">
+  <div>
+    <label for="periodo">Período</label>
+    <select id="periodo" name="periodo" onchange="if (this.value === 'rango') { this.form.querySelector('.ads-range').hidden = false } else { this.form.submit() }">
+      {% for key, label in periods.items() %}<option value="{{ key }}" {{ 'selected' if key == periodo }}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="ads-range" {{ 'hidden' if periodo != 'rango' }}>
+    <div><label for="desde">Desde</label><input id="desde" type="date" name="desde" value="{{ since.isoformat() }}"></div>
+    <div><label for="hasta">Hasta</label><input id="hasta" type="date" name="hasta" value="{{ until.isoformat() }}"></div>
+  </div>
+  <div>
+    <label for="campana">Campaña</label>
+    <select id="campana" name="campana" onchange="this.form.submit()">
+      <option value="">Todas</option>
+      {% for c in campaigns %}<option value="{{ c.id }}" {{ 'selected' if c.id == campana }}>{{ c.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="ads-filters-btn"><button class="btn">Ver</button></div>
+</form>
+<p class="muted small">Del {{ since.strftime("%d/%m/%Y") }} al {{ until.strftime("%d/%m/%Y") }}. Las variaciones comparan contra el período anterior de la misma duración.</p>
+
+<div class="kpis">
+  <div class="kpi accent"><div class="value">{{ totals.spend|money }}</div><div class="label">Inversión {{ delta(changes.spend) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.reach|num }}</div><div class="label">Alcance (personas){% if totals.frequency %} · frecuencia {{ ("%.1f"|format(totals.frequency)).replace(".", ",") }}{% endif %}</div></div>
+  <div class="kpi"><div class="value">{{ totals.link_clicks|num }}</div><div class="label">Clics al enlace {{ delta(changes.link_clicks) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.messages|num }}</div><div class="label">Mensajes recibidos {{ delta(changes.messages) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.cost_per_message|money }}</div><div class="label">Costo por mensaje {{ delta(changes.cost_per_message, true) }}</div></div>
+</div>
+
+{% if series %}
+<div class="card">
+  <div class="card-head"><h2>Inversión por {{ "mes" if monthly else "día" }}</h2><span class="muted small">el número arriba de cada barra son los mensajes</span></div>
+  <div class="ads-spark" role="img" aria-label="Inversión {{ 'mensual' if monthly else 'diaria' }} del período">
+    {% for d in series %}
+    <div class="ads-spark-col" title="{{ d.day.strftime('%m/%Y' if monthly else '%d/%m') }}: {{ d.spend|money }} · {{ d.messages }} mensajes">
+      <span class="ads-spark-msg">{{ d.messages or "" }}</span>
+      <div class="ads-spark-bar" style="height: {{ ((d.spend / max_spend) * 100)|round if max_spend else 0 }}%"></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head">
+    <nav class="tabs" style="margin:0" aria-label="Nivel">
+      {% for key, label in levels.items() %}
+      <a href="?periodo={{ periodo }}&desde={{ since.isoformat() }}&hasta={{ until.isoformat() }}&nivel={{ key }}{% if campana %}&campana={{ campana }}{% endif %}" class="{{ 'active' if key == nivel }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <span class="muted small">{{ rows|length }} en el período</span>
+  </div>
+  {% if rows %}
+  <div class="table-wrap">
+  <table class="ads-table">
+    <thead><tr>
+      <th>Nombre</th><th>Estado</th><th class="num">Inversión</th><th class="num">Alcance</th>
+      <th class="num">Clics</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th><th class="num">CTR</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="ads-name">
+        {% if r.thumbnail_url %}<img src="{{ r.thumbnail_url }}" alt="" width="36" height="36" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+        <div>
+          {% if nivel == 'campanas' %}<a href="?periodo={{ periodo }}&desde={{ since.isoformat() }}&hasta={{ until.isoformat() }}&nivel=anuncios&campana={{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}
+          {% if r.parent %}<div class="muted small">{{ r.parent }}</div>{% endif %}
+          {% if r.budget %}<div class="muted small">Presupuesto diario {{ r.budget|money }}</div>{% endif %}
+        </div>
+      </td>
+      <td>{{ status_chip(r.status) }}</td>
+      <td class="num">{{ r.totals.spend|money }}</td>
+      <td class="num">{{ r.totals.reach|num }}</td>
+      <td class="num">{{ r.totals.link_clicks|num }}</td>
+      <td class="num"><strong>{{ r.totals.messages|num }}</strong></td>
+      <td class="num">{{ r.totals.cost_per_message|money if r.totals.messages else "sin mensajes" }}</td>
+      <td class="num">{{ r.totals.ctr|ratio }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small" style="margin-bottom:0">Mensajes = conversaciones iniciadas desde el anuncio. "s/d" = sin dato para ese período.</p>
+  {% else %}
+  <div class="empty-state">
+    <p><strong>Todavía no hay datos para este período.</strong></p>
+    <p class="muted">{% if configured %}Tocá "Actualizar desde Meta" para traer las campañas.{% else %}Conectá la cuenta publicitaria para empezar.{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -307,3 +307,192 @@ class InstagramPost(Base):
     @property
     def engagement_rate(self) -> float | None:
         return self.interactions / self.reach if self.reach else None
+
+
+# ---------------- Publicidad (Meta Ads) ----------------
+# Montos siempre en la moneda de la cuenta (ARS), ya convertidos desde centavos.
+
+
+class AdAccount(Base):
+    """Cuenta publicitaria de Meta conectada (act_...)."""
+
+    __tablename__ = "ad_accounts"
+    __table_args__ = (UniqueConstraint("workspace_id", "meta_account_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    meta_account_id: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str | None] = mapped_column(String(200))
+    currency: Mapped[str | None] = mapped_column(String(10))
+    timezone_name: Mapped[str | None] = mapped_column(String(60))
+    account_status: Mapped[int | None] = mapped_column(Integer)
+    disable_reason: Mapped[int | None] = mapped_column(Integer)
+    is_prepay: Mapped[bool | None] = mapped_column(Boolean)
+    balance: Mapped[float | None] = mapped_column(Float)
+    spend_cap: Mapped[float | None] = mapped_column(Float)
+    amount_spent: Mapped[float | None] = mapped_column(Float)
+    funding_display: Mapped[str | None] = mapped_column(String(200))
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_full_resync_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Desde qué día están guardadas las métricas diarias (para completar historia faltante).
+    history_since: Mapped[datetime | None] = mapped_column(DateTime)
+    last_sync_error: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def is_active(self) -> bool:
+        return self.account_status in (None, 1)
+
+    @property
+    def spend_cap_left(self) -> float | None:
+        if not self.spend_cap:
+            return None
+        return max(0.0, self.spend_cap - (self.amount_spent or 0))
+
+
+class AdCampaign(Base):
+    __tablename__ = "ad_campaigns"
+    __table_args__ = (UniqueConstraint("workspace_id", "meta_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("ad_accounts.id", ondelete="CASCADE"), index=True
+    )
+    meta_id: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(300))
+    objective: Mapped[str | None] = mapped_column(String(60))
+    status: Mapped[str | None] = mapped_column(String(30))
+    effective_status: Mapped[str | None] = mapped_column(String(30))
+    daily_budget: Mapped[float | None] = mapped_column(Float)
+    lifetime_budget: Mapped[float | None] = mapped_column(Float)
+    start_time: Mapped[datetime | None] = mapped_column(DateTime)
+    stop_time: Mapped[datetime | None] = mapped_column(DateTime)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AdSet(Base):
+    __tablename__ = "ad_sets"
+    __table_args__ = (UniqueConstraint("workspace_id", "meta_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("ad_campaigns.id", ondelete="CASCADE"), index=True
+    )
+    meta_id: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str | None] = mapped_column(String(30))
+    effective_status: Mapped[str | None] = mapped_column(String(30))
+    optimization_goal: Mapped[str | None] = mapped_column(String(60))
+    destination_type: Mapped[str | None] = mapped_column(String(60))
+    daily_budget: Mapped[float | None] = mapped_column(Float)
+    lifetime_budget: Mapped[float | None] = mapped_column(Float)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Ad(Base):
+    __tablename__ = "ads"
+    __table_args__ = (UniqueConstraint("workspace_id", "meta_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("ad_campaigns.id", ondelete="CASCADE"), index=True
+    )
+    ad_set_id: Mapped[int] = mapped_column(ForeignKey("ad_sets.id", ondelete="CASCADE"), index=True)
+    meta_id: Mapped[str] = mapped_column(String(40))
+    name: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str | None] = mapped_column(String(30))
+    effective_status: Mapped[str | None] = mapped_column(String(30))
+    review_feedback: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(1000))
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AdDailyMetric(Base):
+    """Métricas de un anuncio en un día. Inversión, impresiones, clics y mensajes se suman;
+    el alcance NO (son personas únicas): para períodos se usa AdPeriodMetric."""
+
+    __tablename__ = "ad_daily_metrics"
+    __table_args__ = (UniqueConstraint("ad_id", "day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    ad_id: Mapped[int] = mapped_column(ForeignKey("ads.id", ondelete="CASCADE"))
+    ad_set_id: Mapped[int] = mapped_column(ForeignKey("ad_sets.id", ondelete="CASCADE"), index=True)
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("ad_campaigns.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[datetime] = mapped_column(DateTime, index=True)
+    spend: Mapped[float] = mapped_column(Float, default=0)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    reach: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    link_clicks: Mapped[int] = mapped_column(Integer, default=0)
+    messages: Mapped[int] = mapped_column(Integer, default=0)
+    actions: Mapped[list[Any] | None] = mapped_column(JSON)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AdPeriodMetric(Base):
+    """Alcance y frecuencia pedidos a Meta para un período exacto (no se pueden sumar días)."""
+
+    __tablename__ = "ad_period_metrics"
+    __table_args__ = (UniqueConstraint("workspace_id", "level", "meta_id", "since", "until"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    level: Mapped[str] = mapped_column(String(20))  # account | campaign | adset | ad
+    meta_id: Mapped[str] = mapped_column(String(40))
+    since: Mapped[datetime] = mapped_column(DateTime)
+    until: Mapped[datetime] = mapped_column(DateTime)
+    reach: Mapped[int] = mapped_column(Integer, default=0)
+    frequency: Mapped[float | None] = mapped_column(Float)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    spend: Mapped[float] = mapped_column(Float, default=0)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AdChecklistItem(Base):
+    __tablename__ = "ad_checklist_items"
+    __table_args__ = (UniqueConstraint("workspace_id", "key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    key: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="pendiente")
+    notes: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AdAlert(Base):
+    """Aviso de la cuenta. `dedupe_key` evita repetir la misma alerta mientras siga abierta."""
+
+    __tablename__ = "ad_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    severity: Mapped[str] = mapped_column(String(10), default="aviso")
+    dedupe_key: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default="abierta", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AdReport(Base):
+    """Reporte mensual. `data` es una foto congelada: no cambia si después se re-sincroniza."""
+
+    __tablename__ = "ad_reports"
+    __table_args__ = (UniqueConstraint("workspace_id", "month"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    month: Mapped[str] = mapped_column(String(7))  # YYYY-MM
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    pdf_path: Mapped[str | None] = mapped_column(String(500))
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

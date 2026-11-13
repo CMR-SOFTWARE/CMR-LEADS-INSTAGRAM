@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ic %}
+{% block title %}Reportes de publicidad · CMR Lead Finder{% endblock %}
+{% block content %}
+{% include "_ads_nav.html" %}
+
+<div class="card">
+  <div class="card-head"><h2>Generar un reporte</h2></div>
+  <form method="post" action="/publicidad/reportes/generar" class="ads-report-form">
+    <div>
+      <label for="mes">Mes</label>
+      <select id="mes" name="mes">
+        {% for value, label in options %}<option value="{{ value }}" {{ 'selected' if value == default_month }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary">{{ ic("file-text") }} Generar</button>
+  </form>
+  <p class="muted small" style="margin-bottom:0">El reporte del mes anterior se genera solo a partir del día 2. Si lo volvés a generar, se reemplaza con los datos actuales.</p>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Reportes guardados</h2></div>
+  {% if reports %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Mes</th><th class="num">Inversión</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th><th></th></tr></thead>
+    <tbody>
+    {% for r in reports %}
+    <tr>
+      <td><a href="/publicidad/reportes/{{ r.month }}">{{ r.data.label|capitalize }}</a></td>
+      <td class="num">{{ r.data.totals.spend|money }}</td>
+      <td class="num">{{ r.data.totals.messages|num }}</td>
+      <td class="num">{{ r.data.totals.cost_per_message|money }}</td>
+      <td class="num"><a class="btn btn-sm" href="/publicidad/reportes/{{ r.month }}/pdf">{{ ic("file-down") }} PDF</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">Todavía no hay reportes.</p>
+  {% endif %}
+</div>
+{% endblock %}
