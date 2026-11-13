@@ -39,7 +39,7 @@ pocos y pueden ser accidentales: con menos de 10 mensajes no saques conclusiones
 Con los números del período (campañas, anuncios y, si vienen, el rendimiento orgánico de cada \
 formato en Instagram) decidí DÓNDE CONVIENE PONER LA PLATA para llegar a más gente: qué escalar, \
 qué cambiar, qué pausar y cuánto presupuesto mover. Si el orgánico muestra un formato que llega a \
-mucha más gente, proponé usarlo en los anuncios.
+mucha más gente, proponé usarlo en los anuncios. Si viene "que_promocionar", decí qué publicación conviene promocionar (o volver a promocionar) y cuál no repetir, con su motivo.
 
 """
     + COMMON_RULES,
@@ -49,7 +49,7 @@ Instagram de la empresa para conseguir clientes (que visiten el perfil, toquen e
 
 Con los números del período decidí QUÉ PUBLICAR, CUÁNDO Y CON QUÉ FRECUENCIA: qué formato rinde \
 más, qué día y en qué franja horaria conviene subir cada formato, cuántas historias por día y qué \
-hacer para que más gente toque el link o el botón de contacto.
+hacer para que más gente toque el link o el botón de contacto. Si viene "que_promocionar", mencioná qué publicación conviene promocionar y por qué.
 
 """
     + COMMON_RULES,

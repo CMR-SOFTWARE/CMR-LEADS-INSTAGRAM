@@ -1,0 +1,50 @@
+{# Qué publicación conviene promocionar. Recibe `ideas` (instagram/promote.py). #}
+<div class="card" style="margin-top:16px" id="promocionar">
+  <div class="card-head">
+    <h2>¿Qué publicación conviene promocionar?</h2>
+    <span class="muted small">según cómo les fue sin publicidad y con publicidad, último año</span>
+  </div>
+
+  {% if ideas.candidates %}
+  <p class="muted small" style="margin-top:0">Publicaciones <b>sin publicidad</b> que llegaron a más gente o tuvieron más interacción que tu publicación típica ({{ ideas.base_reach|num }} personas). Si a una le fue bien sola, es buena candidata para ponerle plata.</p>
+  <div class="promo-list">
+    {% for c in ideas.candidates %}
+    <div class="promo-item">
+      <div class="promo-rank">{{ loop.index }}</div>
+      <div class="promo-body">
+        <div class="promo-title">{{ c.title }}</div>
+        <div class="muted small">{{ c.post.kind }} · subida el {{ c.published }} · {{ c.post.reach|num }} personas sin publicidad</div>
+        <ul class="promo-reasons">
+          {% for r in c.reasons %}<li>{{ r }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% if c.post.permalink %}<a class="btn" href="{{ c.post.permalink }}" target="_blank" rel="noopener">Ver publicación</a>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted small" style="margin-bottom:0">Si alguna ya la promocionaste desde otra cuenta o con "Promocionar" de la app, su alcance incluye lo pagado y acá puede verse mejor de lo que fue.</p>
+  {% else %}
+  <p class="muted">Todavía no hay una publicación sin publicidad que se destaque sobre la típica.</p>
+  {% endif %}
+
+  {% if ideas.promoted %}
+  <h3 style="margin:18px 0 8px">Las que ya tuvieron publicidad</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Publicación</th><th class="num">Inversión</th><th class="num">Personas alcanzadas</th><th class="num">Costo cada 1.000</th><th class="num">Resultado</th><th>¿Repetir?</th></tr></thead>
+      <tbody>
+        {% for x in ideas.promoted %}
+        <tr>
+          <td>{% if x.post.permalink %}<a href="{{ x.post.permalink }}" target="_blank" rel="noopener">{{ x.title }}</a>{% else %}{{ x.title }}{% endif %}</td>
+          <td class="num">{{ x.spend|money }}</td>
+          <td class="num">{{ x.reach|num }}</td>
+          <td class="num">{{ x.cost|money }}</td>
+          <td class="num">{{ x.result }} {{ x.goal|lower }}</td>
+          <td><span class="chip {{ 'green' if x.verdict == 'Volver a promocionar' else ('red' if x.verdict == 'No repetir así' else '') }}">{{ x.verdict }}</span><div class="muted small">{{ x.why }}</div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>

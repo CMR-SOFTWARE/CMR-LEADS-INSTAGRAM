@@ -430,3 +430,13 @@ button[data-busy][disabled] { opacity: .7; }
 .compare-pick .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--cmr-azul); }
 .compare-pick .dot.right { background: var(--cmr-turquesa); border-radius: 50%; }
 .compare-pick.both-bars .dot.right { border-radius: 3px; }
+
+/* Qué publicación conviene promocionar */
+.promo-list { display: grid; gap: 10px; }
+.promo-item { display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; border: 1px solid rgba(10,31,68,.08); border-radius: 12px; }
+.promo-rank { flex: 0 0 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--cmr-azul); color: #fff; }
+.promo-body { flex: 1; min-width: 0; }
+.promo-title { font-weight: 600; }
+.promo-reasons { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.promo-reasons li { margin: 2px 0; }
+@media (max-width: 640px) { .promo-item { flex-wrap: wrap; } }

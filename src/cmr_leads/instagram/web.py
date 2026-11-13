@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from cmr_leads.ads.web import PERIODS, resolve_period
 from cmr_leads.advice import get_advice, request_advice
 from cmr_leads.instagram.dashboard import FORMATS, WEEKDAYS, build_dashboard
+from cmr_leads.instagram.promote import ideas_facts, ideas_for
 from cmr_leads.instagram.stats import local_now
 from cmr_leads.messaging.ai_writer import AiWriterError
 from cmr_leads.settings import Settings
@@ -230,6 +231,7 @@ def register_instagram_routes(
         with db() as (session, ws):
             d = build_dashboard(session, ws.id, since, until, formato)
             ads = ad_spend_by_day(session, ws.id, since, until, d["monthly"])
+            ideas = ideas_for(session, ws.id, local_now().date())
             report = build_report(session, ws.id)
             advice = get_advice(session, ws.id, "instagram", key)
             t, p = d["totals"], d["previous"]
@@ -239,6 +241,7 @@ def register_instagram_routes(
                 d=d,
                 report=report,
                 charts=build_charts(d, ads),
+                ideas=ideas,
                 periods=PERIODS,
                 periodo=periodo,
                 formats=FORMATS,
@@ -276,7 +279,11 @@ def register_instagram_routes(
             if not d["totals"]["days"] and not d["post_count"]:
                 return back(target, "No hay datos en este período para analizar")
             try:
-                request_advice(session, ws.id, settings, "instagram", key, advice_facts(d))
+                facts = advice_facts(d)
+                facts["que_promocionar"] = ideas_facts(
+                    ideas_for(session, ws.id, local_now().date())
+                )
+                request_advice(session, ws.id, settings, "instagram", key, facts)
             except AiWriterError as exc:
                 return back(target, f"No se pudo analizar: {exc}")
         return back(target + "#analisis", "Análisis listo")

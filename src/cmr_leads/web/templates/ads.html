@@ -62,6 +62,8 @@
 {% set fields = {"periodo": periodo, "desde": since.isoformat(), "hasta": until.isoformat(), "campana": campana or "", "nivel": nivel} %}
 {% with advice_action="/publicidad/analizar", advice_title="¿Dónde conviene poner la plata?", advice_fields=fields %}{% include "_advice.html" %}{% endwith %}
 
+{% include "_promote.html" %}
+
 {% if series %}
 <div class="card" style="margin-top:16px">
   <div class="card-head"><h2>Comparar por {{ "mes" if monthly else "día" }}</h2><span class="muted small">elegí dos datos para ver cómo se mueven juntos</span></div>

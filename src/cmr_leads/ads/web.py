@@ -32,6 +32,7 @@ from cmr_leads.ads.service import (
 from cmr_leads.ads.sync import fetch_period, standard_periods
 from cmr_leads.advice import get_advice, request_advice
 from cmr_leads.db.models import AdAlert, AdChecklistItem, AdReport, utcnow
+from cmr_leads.instagram.promote import ideas_facts, ideas_for
 from cmr_leads.instagram.sync import BudgetExceeded
 from cmr_leads.messaging.ai_writer import AiWriterError
 from cmr_leads.settings import Settings
@@ -299,6 +300,7 @@ def register_ads_routes(
                 series = by_month(series)
             advice_key = f"{periodo}|{since}|{until}|{campana or ''}"
             advice = get_advice(session, ws.id, "publicidad", advice_key)
+            ideas = ideas_for(session, ws.id, today)
             return render(
                 request,
                 "ads.html",
@@ -332,6 +334,7 @@ def register_ads_routes(
                 series=series,
                 monthly=monthly,
                 charts=ads_charts(series, monthly, campaigns, rows),
+                ideas=ideas,
                 advice=advice,
                 ai_ready=bool(settings.gemini_api_key),
                 max_spend=max((d["spend"] for d in series), default=0),
@@ -380,6 +383,7 @@ def register_ads_routes(
                 for f in build_dashboard(session, ws.id, since, until)["formats"]
             ]
             facts = ads_facts(totals, previous, changes, campaigns, ads, organic, since, until)
+            facts["que_promocionar"] = ideas_facts(ideas_for(session, ws.id, date.today()))
             key = f"{periodo}|{since}|{until}|{campaign_id or ''}"
             try:
                 request_advice(session, ws.id, settings, "publicidad", key, facts)
