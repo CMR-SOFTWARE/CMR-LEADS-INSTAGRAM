@@ -13,7 +13,7 @@ from cmr_leads.instagram.dashboard import FORMATS, WEEKDAYS, build_dashboard
 from cmr_leads.instagram.stats import local_now
 from cmr_leads.messaging.ai_writer import AiWriterError
 from cmr_leads.settings import Settings
-from cmr_leads.web.charts import chart, dataset
+from cmr_leads.web.charts import chart, compare, dataset, metric
 
 log = logging.getLogger(__name__)
 SHORT_DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
@@ -39,26 +39,48 @@ def _caption(post, size: int = 40) -> str:
     return text if len(text) <= size else text[: size - 1] + "…"
 
 
-def build_charts(d: dict) -> dict:
-    """Un dato por gráfico, con el valor escrito y el mejor resaltado."""
+def ad_spend_by_day(session, workspace_id: int, since: date, until: date, monthly: bool) -> dict:
+    """Inversión en publicidad por día (o por mes), para cruzarla con los números de Instagram."""
+    from cmr_leads.ads.metrics import by_month, daily_series
+
+    rows = daily_series(session, workspace_id, since, until)
+    if monthly:
+        rows = by_month(rows)
+    return {r["day"]: round(r["spend"]) for r in rows}
+
+
+def build_charts(d: dict, ads: dict | None = None) -> dict:
+    """Comparador de doble eje en el tiempo y un dato por gráfico en el resto.
+
+    `ads` es la inversión en publicidad por día (o mes), para cruzarla con Instagram.
+    """
     charts = {}
     s = d["series"]
     labels = [_label(x["day"], d["monthly"]) for x in s]
-    charts["ig-views"] = chart(
-        "ig-views",
-        "bar",
+    ads = ads or {}
+    metrics = [
+        metric("views", "Visualizaciones", [x["views"] for x in s], "azul"),
+        metric("reach", "Alcance (personas por día)", [x["reach"] for x in s], "turquesa"),
+        metric("profile_views", "Visitas al perfil", [x["profile_views"] for x in s], "ig"),
+        metric("clicks", "Clics a links y botones", [x["clicks"] for x in s], "alerta"),
+        metric("interactions", "Interacciones", [x.get("interactions", 0) for x in s], "violeta"),
+    ]
+    if any(ads.values()):
+        metrics.append(
+            metric(
+                "ad_spend",
+                "Inversión en publicidad",
+                [ads.get(x["day"], 0) for x in s],
+                "navy",
+                "money",
+            )
+        )
+    charts["ig-time"] = compare(
+        "ig-time",
         labels,
-        [dataset("Visualizaciones", [x["views"] for x in s], "azul")],
-        highlight="max",
-    )
-    charts["ig-visits"] = chart(
-        "ig-visits",
-        "line",
-        labels,
-        [
-            dataset("Visitas al perfil", [x["profile_views"] for x in s], "ig", "line"),
-            dataset("Clics a links y botones", [x["clicks"] for x in s], "turquesa", "line"),
-        ],
+        metrics,
+        left="views",
+        right="ad_spend" if any(ads.values()) else "profile_views",
     )
     if d["links"]:
         charts["ig-links"] = chart(
@@ -207,6 +229,7 @@ def register_instagram_routes(
         periodo, since, until, formato, key = resolve(periodo, desde, hasta, formato)
         with db() as (session, ws):
             d = build_dashboard(session, ws.id, since, until, formato)
+            ads = ad_spend_by_day(session, ws.id, since, until, d["monthly"])
             report = build_report(session, ws.id)
             advice = get_advice(session, ws.id, "instagram", key)
             t, p = d["totals"], d["previous"]
@@ -215,7 +238,7 @@ def register_instagram_routes(
                 "instagram.html",
                 d=d,
                 report=report,
-                charts=build_charts(d),
+                charts=build_charts(d, ads),
                 periods=PERIODS,
                 periodo=periodo,
                 formats=FORMATS,

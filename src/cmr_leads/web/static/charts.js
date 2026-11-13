@@ -85,10 +85,62 @@
     return data.map((x) => (x === target ? pick(base, 0) : COLORS.suave));
   }
 
+  // Comparador de doble eje: el usuario elige qué va en barras (eje izquierdo)
+  // y qué va en la línea (eje derecho), por ejemplo plata contra personas alcanzadas.
+  function compareSpec(spec, left, right) {
+    const find = (key) => spec.metrics.find((m) => m.key === key);
+    const datasets = [];
+    const a = find(left);
+    if (a) datasets.push({ label: a.label, data: a.data, color: a.color || "azul", axis: "y", format: a.format });
+    const b = right && right !== left ? find(right) : null;
+    const line = spec.right_kind !== "bar";
+    if (b) datasets.push({ label: b.label, data: b.data, color: b.color || "turquesa", type: line ? "line" : undefined, axis: "y1", format: b.format });
+    return { type: "bar", labels: spec.labels, datasets, titles: true, categories: spec.right_kind === "bar" };
+  }
+
+  function buildCompare(canvas, spec) {
+    const box = canvas.closest(".chart-box") || canvas.parentElement;
+    const bar = document.createElement("div");
+    bar.className = "compare-pick";
+    const select = (name, title, value, allowNone) => {
+      const label = document.createElement("label");
+      label.innerHTML = `<span class="dot ${name}"></span>${title} `;
+      const s = document.createElement("select");
+      if (allowNone) s.add(new Option("Nada", ""));
+      spec.metrics.forEach((m) => s.add(new Option(m.label, m.key)));
+      s.value = value || "";
+      label.appendChild(s);
+      bar.appendChild(label);
+      return s;
+    };
+    const left = select("left", "Barras, eje izq.:", spec.left, false);
+    if (spec.right_kind === "bar") bar.classList.add("both-bars");
+    const right = select("right", (spec.right_kind === "bar" ? "Barras" : "Línea") + ", eje der.:", spec.right, true);
+    box.parentElement.insertBefore(bar, box);
+    let chart = null;
+    const draw = () => {
+      if (chart) chart.destroy();
+      chart = draw2(canvas, compareSpec(spec, left.value, right.value));
+      // El puntito de cada selector toma el color de su dato en el gráfico.
+      const dots = bar.querySelectorAll(".dot");
+      chart.data.datasets.forEach((d, i) => {
+        if (dots[i]) dots[i].style.background = d.borderColor;
+      });
+    };
+    left.addEventListener("change", draw);
+    right.addEventListener("change", draw);
+    draw();
+  }
+
   function build(canvas) {
     const source = document.getElementById(canvas.dataset.chart);
     if (!source) return;
     const spec = JSON.parse(source.textContent);
+    if (spec.type === "compare") return buildCompare(canvas, spec);
+    return draw2(canvas, spec);
+  }
+
+  function draw2(canvas, spec) {
     const round = spec.type === "doughnut";
     const horizontal = !!spec.horizontal;
     const datasets = spec.datasets.map((d, i) => {
@@ -123,12 +175,13 @@
       axes[indexAxis] = {
         grid: { display: false },
         ticks: {
-          autoSkip: !horizontal,
+          autoSkip: !horizontal && !spec.categories,
           maxRotation: 0,
           // Rankings: el nombre completo se ve en el tooltip, acá se corta.
           callback(value) {
             const label = this.getLabelForValue(value);
-            return horizontal && label.length > 28 ? label.slice(0, 27) + "…" : label;
+            const max = horizontal ? 28 : spec.categories ? 20 : 99;
+            return label.length > max ? label.slice(0, max - 1) + "…" : label;
           },
         },
       };
@@ -140,11 +193,17 @@
           beginAtZero: true,
           grace: "12%", // lugar para el número arriba de la barra
           grid: { display: id !== "y1", color: "rgba(10,31,68,.06)" },
-          ticks: { callback: (value) => (ds._format === "money" ? "$" : "") + short(value) },
+          title: spec.titles
+            ? { display: true, text: ds.label, color: ds.borderColor, font: { weight: "600" } }
+            : undefined,
+          ticks: {
+            color: spec.titles ? ds.borderColor : undefined,
+            callback: (value) => (ds._format === "money" ? "$" : "") + short(value),
+          },
         };
       });
     }
-    new Chart(canvas, {
+    return new Chart(canvas, {
       type: spec.type || "bar",
       data: { labels: spec.labels, datasets },
       options: {

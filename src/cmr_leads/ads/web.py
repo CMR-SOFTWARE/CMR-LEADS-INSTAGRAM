@@ -35,7 +35,7 @@ from cmr_leads.db.models import AdAlert, AdChecklistItem, AdReport, utcnow
 from cmr_leads.instagram.sync import BudgetExceeded
 from cmr_leads.messaging.ai_writer import AiWriterError
 from cmr_leads.settings import Settings
-from cmr_leads.web.charts import chart, dataset
+from cmr_leads.web.charts import compare, metric
 
 log = logging.getLogger(__name__)
 
@@ -105,49 +105,62 @@ def resolve_period(periodo: str, desde: str, hasta: str, today: date) -> tuple[s
 
 
 def ads_charts(series: list[dict], monthly: bool, campaigns: list, rows: list) -> dict:
-    """Un dato por gráfico, con el valor escrito y el mejor resaltado."""
+    """Gráficos de doble eje: se elige qué dato va en barras y cuál en la línea."""
     fmt = "%m/%Y" if monthly else "%d/%m"
-    labels = [d["day"].strftime(fmt) for d in series]
+    col = lambda key: [d.get(key, 0) for d in series]  # noqa: E731
     charts = {
-        "ad-reach": chart(
-            "ad-reach",
-            "bar",
-            labels,
-            [dataset("Personas alcanzadas", [d.get("reach", 0) for d in series], "turquesa")],
-            highlight="max",
-        ),
-        "ad-spend": chart(
-            "ad-spend",
-            "bar",
-            labels,
-            [dataset("Inversión", [round(d["spend"]) for d in series], "azul", fmt="money")],
-        ),
-    }
-    spent = [c for c in campaigns if c.totals.spend > 0]
-    if spent:
-        charts["ad-split"] = chart(
-            "ad-split",
-            "bar",
-            [_short(c.name) for c in spent],
-            [dataset("Inversión", [round(c.totals.spend) for c in spent], "azul", fmt="money")],
-            horizontal=True,
-        )
-    with_reach = [r for r in rows if r.totals.cost_per_thousand_reach]
-    if with_reach:
-        charts["ad-cost"] = chart(
-            "ad-cost",
-            "bar",
-            [_short(r.name) for r in with_reach],
+        "ad-time": compare(
+            "ad-time",
+            [d["day"].strftime(fmt) for d in series],
             [
-                dataset(
-                    "Costo cada 1.000 personas",
-                    [round(r.totals.cost_per_thousand_reach) for r in with_reach],
-                    "turquesa",
-                    fmt="money",
-                )
+                metric("spend", "Inversión", [round(x) for x in col("spend")], "azul", "money"),
+                metric("reach", "Personas alcanzadas", col("reach"), "turquesa"),
+                metric(
+                    "impressions", "Veces que se vio (impresiones)", col("impressions"), "violeta"
+                ),
+                metric("engagement", "Interacciones", col("engagement"), "ig"),
+                metric("link_clicks", "Clics al link", col("link_clicks"), "alerta"),
+                metric("messages", "Mensajes", col("messages"), "navy"),
             ],
-            horizontal=True,
-            highlight="min",
+            left="spend",
+            right="reach",
+        )
+    }
+    shown = [r for r in rows if r.totals.spend > 0]
+    if shown:
+        t = [r.totals for r in shown]
+        charts["ad-rows"] = compare(
+            "ad-rows",
+            [_short(r.name, 26) for r in shown],
+            [
+                metric("spend", "Inversión", [round(x.spend) for x in t], "azul", "money"),
+                metric("reach", "Personas alcanzadas", [x.reach for x in t], "turquesa"),
+                metric(
+                    "cpr",
+                    "Costo cada 1.000 personas",
+                    [
+                        round(x.cost_per_thousand_reach) if x.cost_per_thousand_reach else None
+                        for x in t
+                    ],
+                    "alerta",
+                    "money",
+                ),
+                metric("result", "Resultado de lo que se pagó", [r.result for r in shown], "ig"),
+                metric(
+                    "impressions",
+                    "Veces que se vio (impresiones)",
+                    [x.impressions for x in t],
+                    "violeta",
+                ),
+                metric("engagement", "Interacciones", [x.engagement for x in t], "ig"),
+                metric("link_clicks", "Clics al link", [x.link_clicks for x in t], "alerta"),
+                metric(
+                    "frequency", "Veces que lo vio cada persona", [x.frequency for x in t], "navy"
+                ),
+            ],
+            left="spend",
+            right="reach",
+            over_time=False,
         )
     return charts
 

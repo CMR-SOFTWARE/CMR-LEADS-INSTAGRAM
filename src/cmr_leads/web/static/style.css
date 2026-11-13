@@ -422,3 +422,11 @@ button[data-busy][disabled] { opacity: .7; }
 .kpi-icon .ico { width: 18px; height: 18px; }
 .kpi.accent .kpi-icon { background: rgba(255, 255, 255, .12); color: var(--cmr-blanco); }
 .chart-box.tall { height: 360px; }
+
+/* Comparador de doble eje: elegir qué dato va en barras y cuál en la línea */
+.compare-pick { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 10px; font-size: 13px; color: var(--cmr-texto-1); }
+.compare-pick label { display: flex; align-items: center; gap: 6px; }
+.compare-pick select { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--cmr-borde, #D8DEEA); font: inherit; background: #fff; }
+.compare-pick .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--cmr-azul); }
+.compare-pick .dot.right { background: var(--cmr-turquesa); border-radius: 50%; }
+.compare-pick.both-bars .dot.right { border-radius: 3px; }

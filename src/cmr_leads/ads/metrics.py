@@ -285,9 +285,14 @@ def daily_series(session: Session, workspace_id: int, since: date, until: date) 
             "messages": int(m),
             "reach": int(reach.get(d) or 0),
             "engagement": extra.get(d, (0, 0))[0],
+            "impressions": int(i),
+            "link_clicks": int(lc),
         }
-        for d, s, _i, _c, _l, m in session.execute(query)
+        for d, s, i, _c, lc, m in session.execute(query)
     ]
+
+
+_MONTH_FIELDS = ("spend", "messages", "reach", "engagement", "impressions", "link_clicks")
 
 
 def by_month(series: list[dict]) -> list[dict]:
@@ -295,10 +300,8 @@ def by_month(series: list[dict]) -> list[dict]:
     months: dict[date, dict] = {}
     for d in series:
         key = d["day"].replace(day=1)
-        row = months.setdefault(
-            key, {"day": key, "spend": 0.0, "messages": 0, "reach": 0, "engagement": 0}
-        )
-        for field in ("spend", "messages", "reach", "engagement"):
+        row = months.setdefault(key, {"day": key, **dict.fromkeys(_MONTH_FIELDS, 0)})
+        for field in _MONTH_FIELDS:
             row[field] += d.get(field, 0)
     return list(months.values())
 

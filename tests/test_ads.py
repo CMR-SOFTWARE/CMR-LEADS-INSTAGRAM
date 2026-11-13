@@ -315,10 +315,12 @@ def test_by_month_groups_series():
         {"day": date(2026, 11, 1), "spend": 50.0, "messages": 2},
         {"day": date(2026, 11, 2), "spend": 25.0, "messages": 0},
     ]
-    assert by_month(series) == [
-        {"day": date(2026, 10, 1), "spend": 100.0, "messages": 1, "reach": 0, "engagement": 0},
-        {"day": date(2026, 11, 1), "spend": 75.0, "messages": 2, "reach": 0, "engagement": 0},
+    months = by_month(series)
+    assert [(m["day"], m["spend"], m["messages"]) for m in months] == [
+        (date(2026, 10, 1), 100.0, 1),
+        (date(2026, 11, 1), 75.0, 2),
     ]
+    assert months[0]["reach"] == months[0]["impressions"] == months[0]["link_clicks"] == 0
 
 
 def test_second_sync_updates_without_duplicates(session, workspace):

@@ -63,27 +63,15 @@
 {% with advice_action="/publicidad/analizar", advice_title="¿Dónde conviene poner la plata?", advice_fields=fields %}{% include "_advice.html" %}{% endwith %}
 
 {% if series %}
-<div class="grid grid-2" style="margin-top:16px">
-  <div class="card">
-    <div class="card-head"><h2>Personas alcanzadas por {{ "mes" if monthly else "día" }}</h2><span class="muted small">suma de cada {{ "mes" if monthly else "día" }}</span></div>
-    <div class="chart-box">{{ charts["ad-reach"] }}<canvas data-chart="ad-reach" aria-label="Personas alcanzadas por {{ 'mes' if monthly else 'día' }}"></canvas></div>
-  </div>
-  <div class="card">
-    <div class="card-head"><h2>Inversión por {{ "mes" if monthly else "día" }}</h2></div>
-    <div class="chart-box">{{ charts["ad-spend"] }}<canvas data-chart="ad-spend" aria-label="Inversión por {{ 'mes' if monthly else 'día' }}"></canvas></div>
-  </div>
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Comparar por {{ "mes" if monthly else "día" }}</h2><span class="muted small">elegí dos datos para ver cómo se mueven juntos</span></div>
+  <div class="chart-box">{{ charts["ad-time"] }}<canvas data-chart="ad-time" aria-label="Comparación de dos datos por {{ 'mes' if monthly else 'día' }}"></canvas></div>
 </div>
-<div class="grid grid-2" style="margin-top:16px">
-  <div class="card">
-    <div class="card-head"><h2>Inversión por campaña</h2></div>
-    {% if charts["ad-split"] %}<div class="chart-box">{{ charts["ad-split"] }}<canvas data-chart="ad-split" aria-label="Inversión por campaña"></canvas></div>
-    {% else %}<p class="muted">Sin inversión en el período.</p>{% endif %}
-  </div>
-  <div class="card">
-    <div class="card-head"><h2>Costo cada 1.000 personas ({{ levels[nivel]|lower }})</h2><span class="muted small">en color fuerte, la más barata</span></div>
-    {% if charts["ad-cost"] %}<div class="chart-box">{{ charts["ad-cost"] }}<canvas data-chart="ad-cost" aria-label="Costo cada 1.000 personas alcanzadas"></canvas></div>
-    {% else %}<p class="muted">Sin alcance medido en el período.</p>{% endif %}
-  </div>
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Comparar {{ levels[nivel]|lower }}</h2><span class="muted small">por ejemplo, cuánta plata se puso contra a cuánta gente llegó</span></div>
+  {% if charts["ad-rows"] %}<div class="chart-box tall">{{ charts["ad-rows"] }}<canvas data-chart="ad-rows" aria-label="Comparación de dos datos por {{ levels[nivel]|lower }}"></canvas></div>
+  {% else %}<p class="muted">Sin inversión en el período.</p>{% endif %}
+  <p class="muted small" style="margin-bottom:0">Que dos datos suban juntos no prueba que uno cause el otro: sirve para detectar patrones, no para sacar conclusiones solas.</p>
 </div>
 {% endif %}
 

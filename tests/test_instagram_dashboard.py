@@ -306,7 +306,7 @@ def test_instagram_page_with_filters(web):
 
     page = web.get("/instagram?periodo=7d")
     assert page.status_code == 200
-    assert 'data-chart="ig-views"' in page.text
+    assert 'data-chart="ig-time"' in page.text
     assert "Reel / video: qué día y a qué hora se ve más" in page.text
     assert "Historias subidas" in page.text
     assert "—" not in page.text.split("<main")[1]

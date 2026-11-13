@@ -83,8 +83,17 @@ def series(rows: list[InstagramDaily], monthly: bool) -> list[dict]:
     for r in rows:
         key = r.day.date().replace(day=1) if monthly else r.day.date()
         b = buckets.setdefault(
-            key, {"day": key, "views": 0, "reach": 0, "profile_views": 0, "clicks": 0}
+            key,
+            {
+                "day": key,
+                "views": 0,
+                "reach": 0,
+                "profile_views": 0,
+                "clicks": 0,
+                "interactions": 0,
+            },
         )
+        b["interactions"] += r.total_interactions or 0
         b["views"] += r.views or 0
         b["reach"] += r.reach or 0
         b["profile_views"] += r.profile_views or 0

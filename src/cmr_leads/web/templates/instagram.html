@@ -67,17 +67,11 @@ FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
 {% set fields = {"periodo": periodo, "desde": d.since.isoformat(), "hasta": d.until.isoformat(), "formato": formato} %}
 {% with advice_action="/instagram/analizar", advice_title="Qué conviene hacer", advice_fields=fields %}{% include "_advice.html" %}{% endwith %}
 
-<div class="grid grid-2" style="margin-top:16px">
-  <div class="card">
-    <div class="card-head"><h2>Visualizaciones por {{ "mes" if d.monthly else "día" }}</h2><span class="muted small">en azul fuerte, el {{ "mes" if d.monthly else "día" }} con más</span></div>
-    {% if d.series %}<div class="chart-box">{{ charts["ig-views"] }}<canvas data-chart="ig-views" aria-label="Visualizaciones por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
-    {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
-  </div>
-  <div class="card">
-    <div class="card-head"><h2>Visitas al perfil y clics</h2></div>
-    {% if d.series %}<div class="chart-box">{{ charts["ig-visits"] }}<canvas data-chart="ig-visits" aria-label="Visitas al perfil y clics por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
-    {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
-  </div>
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Comparar por {{ "mes" if d.monthly else "día" }}</h2><span class="muted small">elegí dos datos, por ejemplo la plata en publicidad contra las visualizaciones</span></div>
+  {% if d.series %}<div class="chart-box">{{ charts["ig-time"] }}<canvas data-chart="ig-time" aria-label="Comparación de dos datos por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
+  <p class="muted small" style="margin-bottom:0">Que dos datos suban juntos no prueba que uno cause el otro: sirve para detectar patrones, no para sacar conclusiones solas.</p>
+  {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
 </div>
 
 <div class="grid grid-2" style="margin-top:16px">
