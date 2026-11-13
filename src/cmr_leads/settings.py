@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     instagram_dm_check_minutes: int = 30
     instagram_dm_state: Path = Path("data/instagram_dms.json")
     instagram_posts_to_sync: int = 25
+    instagram_stats_hours: int = 6  # cada cuántas horas se actualizan días y publicaciones solos
     instagram_stories_minutes: int = 60  # cada cuánto leer las historias activas (0 = nunca)
-    meta_max_stats_requests_per_day: int = 300
+    meta_max_stats_requests_per_day: int = 600
 
     # Publicidad (Meta Ads). Token de un usuario del sistema de la app de anuncios
     # (permisos ads_read y business_management). Va aparte del token de Instagram.

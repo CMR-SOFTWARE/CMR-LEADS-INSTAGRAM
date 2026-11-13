@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import ic %}
 {% block title %}Publicidad · CMR Lead Finder{% endblock %}
 {% macro delta(value, lower_is_better=false) -%}
   {%- if value is not none -%}
@@ -50,11 +51,12 @@
 <p class="muted small">Del {{ since.strftime("%d/%m/%Y") }} al {{ until.strftime("%d/%m/%Y") }}. Las variaciones comparan contra el período anterior de la misma duración.</p>
 
 <div class="kpis">
-  <div class="kpi accent"><div class="value">{{ totals.spend|money }}</div><div class="label">Inversión {{ delta(changes.spend) }}</div></div>
-  <div class="kpi"><div class="value">{{ totals.reach|num }}</div><div class="label">Alcance (personas){% if totals.frequency %} · frecuencia {{ ("%.1f"|format(totals.frequency)).replace(".", ",") }}{% endif %}</div></div>
-  <div class="kpi"><div class="value">{{ totals.link_clicks|num }}</div><div class="label">Clics al enlace {{ delta(changes.link_clicks) }}</div></div>
-  <div class="kpi"><div class="value">{{ totals.messages|num }}</div><div class="label">Mensajes recibidos {{ delta(changes.messages) }}</div></div>
-  <div class="kpi"><div class="value">{{ totals.cost_per_message|money }}</div><div class="label">Costo por mensaje {{ delta(changes.cost_per_message, true) }}</div></div>
+  <div class="kpi accent"><div class="value">{{ totals.reach|num }}</div><span class="kpi-icon">{{ ic("users") }}</span><div class="label">Personas alcanzadas{% if totals.frequency %} · frecuencia {{ ("%.1f"|format(totals.frequency)).replace(".", ",") }}{% endif %}</div></div>
+  <div class="kpi"><div class="value">{{ totals.cost_per_thousand_reach|money }}</div><span class="kpi-icon">{{ ic("target") }}</span><div class="label">Costo cada 1.000 personas {{ delta(changes.cost_per_thousand_reach, true) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.spend|money }}</div><span class="kpi-icon">{{ ic("banknote") }}</span><div class="label">Inversión {{ delta(changes.spend) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.engagement|num }}</div><span class="kpi-icon">{{ ic("heart") }}</span><div class="label">Interacciones {{ delta(changes.engagement) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.link_clicks|num }}</div><span class="kpi-icon">{{ ic("mouse-pointer") }}</span><div class="label">Visitas al perfil y clics {{ delta(changes.link_clicks) }}</div></div>
+  <div class="kpi"><div class="value">{{ totals.messages|num }}</div><span class="kpi-icon">{{ ic("message-circle") }}</span><div class="label">Mensajes {{ delta(changes.messages) }}</div></div>
 </div>
 
 {% set fields = {"periodo": periodo, "desde": since.isoformat(), "hasta": until.isoformat(), "campana": campana or "", "nivel": nivel} %}
@@ -63,21 +65,26 @@
 {% if series %}
 <div class="grid grid-2" style="margin-top:16px">
   <div class="card">
-    <div class="card-head"><h2>Inversión y mensajes por {{ "mes" if monthly else "día" }}</h2></div>
-    <div class="chart-box">{{ charts["ad-series"] }}<canvas data-chart="ad-series" aria-label="Inversión y mensajes por {{ 'mes' if monthly else 'día' }}"></canvas></div>
+    <div class="card-head"><h2>Personas alcanzadas por {{ "mes" if monthly else "día" }}</h2><span class="muted small">suma de cada {{ "mes" if monthly else "día" }}</span></div>
+    <div class="chart-box">{{ charts["ad-reach"] }}<canvas data-chart="ad-reach" aria-label="Personas alcanzadas por {{ 'mes' if monthly else 'día' }}"></canvas></div>
   </div>
   <div class="card">
-    <div class="card-head"><h2>En qué se fue la plata</h2></div>
+    <div class="card-head"><h2>Inversión por {{ "mes" if monthly else "día" }}</h2></div>
+    <div class="chart-box">{{ charts["ad-spend"] }}<canvas data-chart="ad-spend" aria-label="Inversión por {{ 'mes' if monthly else 'día' }}"></canvas></div>
+  </div>
+</div>
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>Inversión por campaña</h2></div>
     {% if charts["ad-split"] %}<div class="chart-box">{{ charts["ad-split"] }}<canvas data-chart="ad-split" aria-label="Inversión por campaña"></canvas></div>
     {% else %}<p class="muted">Sin inversión en el período.</p>{% endif %}
   </div>
+  <div class="card">
+    <div class="card-head"><h2>Costo cada 1.000 personas ({{ levels[nivel]|lower }})</h2><span class="muted small">en color fuerte, la más barata</span></div>
+    {% if charts["ad-cost"] %}<div class="chart-box">{{ charts["ad-cost"] }}<canvas data-chart="ad-cost" aria-label="Costo cada 1.000 personas alcanzadas"></canvas></div>
+    {% else %}<p class="muted">Sin alcance medido en el período.</p>{% endif %}
+  </div>
 </div>
-{% if charts["ad-cost"] %}
-<div class="card" style="margin-top:16px">
-  <div class="card-head"><h2>Inversión contra mensajes por {{ levels[nivel]|lower }}</h2><span class="muted small">la barra alta con pocos mensajes es la que hay que revisar</span></div>
-  <div class="chart-box">{{ charts["ad-cost"] }}<canvas data-chart="ad-cost" aria-label="Inversión y mensajes por {{ levels[nivel]|lower }}"></canvas></div>
-</div>
-{% endif %}
 {% endif %}
 
 <div class="card" style="margin-top:16px">
@@ -93,8 +100,8 @@
   <div class="table-wrap">
   <table class="ads-table">
     <thead><tr>
-      <th>Nombre</th><th>Estado</th><th class="num">Inversión</th><th class="num">Alcance</th>
-      <th class="num">Clics</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th><th class="num">CTR</th>
+      <th>Nombre</th><th>Se pagó para</th><th>Estado</th><th class="num">Inversión</th><th class="num">Alcance</th>
+      <th class="num">Costo cada 1.000 personas</th><th class="num">Resultado</th><th class="num">Costo por resultado</th><th class="num">Interacciones</th>
     </tr></thead>
     <tbody>
     {% for r in rows %}
@@ -107,19 +114,20 @@
           {% if r.budget %}<div class="muted small">Presupuesto diario {{ r.budget|money }}</div>{% endif %}
         </div>
       </td>
+      <td><span class="chip">{{ r.goal.label }}</span></td>
       <td>{{ status_chip(r.status) }}</td>
       <td class="num">{{ r.totals.spend|money }}</td>
-      <td class="num">{{ r.totals.reach|num }}</td>
-      <td class="num">{{ r.totals.link_clicks|num }}</td>
-      <td class="num"><strong>{{ r.totals.messages|num }}</strong></td>
-      <td class="num">{{ r.totals.cost_per_message|money if r.totals.messages else "sin mensajes" }}</td>
-      <td class="num">{{ r.totals.ctr|ratio }}</td>
+      <td class="num"><strong>{{ r.totals.reach|num }}</strong></td>
+      <td class="num">{{ r.totals.cost_per_thousand_reach|money }}</td>
+      <td class="num">{{ r.result|num }}<div class="muted small">{{ r.goal.result|lower }}</div></td>
+      <td class="num">{% if r.cost_per_result %}{{ r.cost_per_result|money }}<div class="muted small">por {{ r.goal.unit }}</div>{% else %}sin resultado{% endif %}</td>
+      <td class="num">{{ r.totals.engagement|num }}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="muted small" style="margin-bottom:0">Mensajes = conversaciones iniciadas desde el anuncio. "s/d" = sin dato para ese período.</p>
+  <p class="muted small" style="margin-bottom:0">Cada fila se mide por el objetivo para el que se pagó en Meta ("Se pagó para"): visitas al perfil, mensajes, alcance, etc. El alcance son personas únicas. "s/d" = sin dato para ese período.</p>
   {% else %}
   <div class="empty-state">
     <p><strong>Todavía no hay datos para este período.</strong></p>

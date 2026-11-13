@@ -55,23 +55,36 @@ FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
 
 {% set t = d.totals %}
 <div class="kpis">
-  <div class="kpi accent"><div class="value">{{ t.views|num }}</div><div class="label">Visualizaciones {{ delta(changes.views) }}</div></div>
-  <div class="kpi"><div class="value">{{ t.reach_avg|num }}</div><div class="label">Alcance por día (promedio) {{ delta(changes.reach_avg) }}</div></div>
-  <div class="kpi"><div class="value">{{ t.profile_views|num }}</div><div class="label">Visitas al perfil {{ delta(changes.profile_views) }}</div></div>
-  <div class="kpi"><div class="value">{{ t.website_clicks|num }}</div><div class="label">Clics al link de la bio {{ delta(changes.website_clicks) }}</div></div>
-  <div class="kpi"><div class="value">{{ t.link_taps|num }}</div><div class="label">Toques a botones {{ delta(changes.link_taps) }}</div></div>
-  <div class="kpi"><div class="value">{{ t.interactions|num }}</div><div class="label">Interacciones {{ delta(changes.interactions) }}</div></div>
+  <div class="kpi accent"><div class="value">{{ t.views|num }}</div><span class="kpi-icon">{{ ic("eye") }}</span><div class="label">Visualizaciones {{ delta(changes.views) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.reach_avg|num }}</div><span class="kpi-icon">{{ ic("users") }}</span><div class="label">Alcance por día (promedio) {{ delta(changes.reach_avg) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.profile_views|num }}</div><span class="kpi-icon">{{ ic("user-plus") }}</span><div class="label">Visitas al perfil {{ delta(changes.profile_views) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.website_clicks|num }}</div><span class="kpi-icon">{{ ic("external-link") }}</span><div class="label">Clics al link de la bio {{ delta(changes.website_clicks) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.link_taps|num }}</div><span class="kpi-icon">{{ ic("mouse-pointer") }}</span><div class="label">Toques a botones {{ delta(changes.link_taps) }}</div></div>
+  <div class="kpi"><div class="value">{{ t.interactions|num }}</div><span class="kpi-icon">{{ ic("heart") }}</span><div class="label">Interacciones {{ delta(changes.interactions) }}</div></div>
 </div>
 {% if configured and not t.days %}<div class="notice info">Todavía no hay datos día por día en este período. Tocá "Actualizar desde Instagram": la primera vez completa el año de a tandas.</div>{% endif %}
 
 {% set fields = {"periodo": periodo, "desde": d.since.isoformat(), "hasta": d.until.isoformat(), "formato": formato} %}
 {% with advice_action="/instagram/analizar", advice_title="Qué conviene hacer", advice_fields=fields %}{% include "_advice.html" %}{% endwith %}
 
-<div class="grid grid-2 ig-top" style="margin-top:16px">
+<div class="grid grid-2" style="margin-top:16px">
   <div class="card">
-    <div class="card-head"><h2>Visualizaciones por {{ "mes" if d.monthly else "día" }}</h2></div>
-    {% if d.series %}<div class="chart-box">{{ charts["ig-series"] }}<canvas data-chart="ig-series" aria-label="Visualizaciones, visitas al perfil y clics por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
+    <div class="card-head"><h2>Visualizaciones por {{ "mes" if d.monthly else "día" }}</h2><span class="muted small">en azul fuerte, el {{ "mes" if d.monthly else "día" }} con más</span></div>
+    {% if d.series %}<div class="chart-box">{{ charts["ig-views"] }}<canvas data-chart="ig-views" aria-label="Visualizaciones por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
     {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Visitas al perfil y clics</h2></div>
+    {% if d.series %}<div class="chart-box">{{ charts["ig-visits"] }}<canvas data-chart="ig-visits" aria-label="Visitas al perfil y clics por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
+    {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div class="card-head"><h2>Las 10 publicaciones más vistas</h2></div>
+    {% if charts["ig-top"] %}<div class="chart-box tall">{{ charts["ig-top"] }}<canvas data-chart="ig-top" aria-label="Las 10 publicaciones con más visualizaciones"></canvas></div>
+    {% else %}<p class="muted">No hay publicaciones en este período.</p>{% endif %}
   </div>
   <div class="card">
     <div class="card-head"><h2>A dónde entran</h2></div>
@@ -82,7 +95,7 @@ FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
 </div>
 
 <div class="card" style="margin-top:16px">
-  <div class="card-head"><h2>Qué formato funciona más</h2><span class="muted small">publicaciones subidas en el período</span></div>
+  <div class="card-head"><h2>Qué formato funciona más</h2><span class="muted small">vistas promedio por publicación subida en el período</span></div>
   {% if d.formats %}
   <div class="chart-box short">{{ charts["ig-formats"] }}<canvas data-chart="ig-formats" aria-label="Vistas y alcance promedio por formato"></canvas></div>
   <div class="table-wrap"><table>
@@ -146,8 +159,8 @@ FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
     <div class="kpi"><div class="value">{{ st.replies|num }}</div><div class="label">Respuestas</div></div>
   </div>
   <div class="grid grid-2">
-    <div><p class="muted small">Cuántas se subieron y cuántas vistas sumaron cada día</p><div class="chart-box short">{{ charts["ig-stories"] }}<canvas data-chart="ig-stories" aria-label="Historias y vistas por día"></canvas></div></div>
-    <div><p class="muted small">Por día de la semana: vistas por historia y cuántas se suben</p><div class="chart-box short">{{ charts["ig-stories-week"] }}<canvas data-chart="ig-stories-week" aria-label="Historias por día de la semana"></canvas></div></div>
+    <div><p class="muted small">Cuántas historias se subieron cada día</p><div class="chart-box short">{{ charts["ig-stories"] }}<canvas data-chart="ig-stories" aria-label="Historias subidas por día"></canvas></div></div>
+    <div><p class="muted small">Vistas promedio por historia según el día de la semana</p><div class="chart-box short">{{ charts["ig-stories-week"] }}<canvas data-chart="ig-stories-week" aria-label="Vistas por historia según el día de la semana"></canvas></div></div>
   </div>
   {% else %}
   <p class="muted">Todavía no hay historias guardadas en este período.</p>

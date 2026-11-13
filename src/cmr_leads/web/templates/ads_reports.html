@@ -23,14 +23,14 @@
   {% if reports %}
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Mes</th><th class="num">Inversión</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th><th></th></tr></thead>
+    <thead><tr><th>Mes</th><th class="num">Inversión</th><th class="num">Alcance</th><th class="num">Costo cada 1.000 personas</th><th></th></tr></thead>
     <tbody>
     {% for r in reports %}
     <tr>
       <td><a href="/publicidad/reportes/{{ r.month }}">{{ r.data.label|capitalize }}</a></td>
       <td class="num">{{ r.data.totals.spend|money }}</td>
-      <td class="num">{{ r.data.totals.messages|num }}</td>
-      <td class="num">{{ r.data.totals.cost_per_message|money }}</td>
+      <td class="num">{{ r.data.totals.reach|num }}</td>
+      <td class="num">{{ r.data.totals.cost_per_thousand_reach|money }}</td>
       <td class="num"><a class="btn btn-sm" href="/publicidad/reportes/{{ r.month }}/pdf">{{ ic("file-down") }} PDF</a></td>
     </tr>
     {% endfor %}

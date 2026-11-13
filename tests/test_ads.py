@@ -117,6 +117,8 @@ class FakeMeta:
                             "name": "Conjunto 1",
                             "campaign_id": "c1",
                             "effective_status": "ACTIVE",
+                            "optimization_goal": "CONVERSATIONS",
+                            "destination_type": "INSTAGRAM_DIRECT",
                         }
                     ]
                 },
@@ -314,8 +316,8 @@ def test_by_month_groups_series():
         {"day": date(2026, 11, 2), "spend": 25.0, "messages": 0},
     ]
     assert by_month(series) == [
-        {"day": date(2026, 10, 1), "spend": 100.0, "messages": 1},
-        {"day": date(2026, 11, 1), "spend": 75.0, "messages": 2},
+        {"day": date(2026, 10, 1), "spend": 100.0, "messages": 1, "reach": 0, "engagement": 0},
+        {"day": date(2026, 11, 1), "spend": 75.0, "messages": 2, "reach": 0, "engagement": 0},
     ]
 
 
@@ -398,35 +400,51 @@ def test_parse_prepaid_balance():
 
 
 def test_rank_ads_best_and_worst_do_not_overlap():
+    # Se ordena por costo de llegar a 1.000 personas (la prioridad es el alcance).
     ads = [
-        {"name": "A", "spend": 1000, "messages": 10, "cost_per_message": 100},
-        {"name": "B", "spend": 1000, "messages": 2, "cost_per_message": 500},
-        {"name": "C", "spend": 800, "messages": 0, "cost_per_message": None},
-        {"name": "D", "spend": 0, "messages": 0, "cost_per_message": None},
+        {"name": "A", "spend": 1000, "reach": 10000, "cost_per_thousand_reach": 100, "result": 50},
+        {"name": "B", "spend": 1000, "reach": 2000, "cost_per_thousand_reach": 500, "result": 9},
+        {"name": "C", "spend": 800, "reach": 4000, "cost_per_thousand_reach": 200, "result": 0},
+        {"name": "D", "spend": 0, "reach": None, "cost_per_thousand_reach": None, "result": 0},
     ]
     best, worst = rank_ads(ads)
     assert [a["name"] for a in best] == ["A"]  # 3 anuncios con gasto: 1 mejor
-    assert [a["name"] for a in worst] == ["C", "B"]  # primero el que no trajo nada
+    # Primero el que no trajo el resultado de su objetivo, después el alcance más caro.
+    assert [a["name"] for a in worst] == ["C", "B"]
 
     best, worst = rank_ads(ads[:2])
     assert [a["name"] for a in best] == ["A"] and [a["name"] for a in worst] == ["B"]
 
 
 def test_recommendations_rules():
+    def ad(name, spend, result, reach, objective="visitas_perfil"):
+        return {
+            "name": name,
+            "spend": spend,
+            "result": result,
+            "reach": reach,
+            "objective": objective,
+            "result_label": "Visitas al perfil",
+            "result_unit": "visita",
+            "cost_per_result": spend / result if result else None,
+            "cost_per_thousand_reach": spend / reach * 1000,
+        }
+
     data = {
-        "totals": {"spend": 10000, "cost_per_message": 500, "frequency": 3.6},
-        "previous": {"cost_per_message": 300},
+        "totals": {"spend": 10000, "frequency": 3.6, "cost_per_thousand_reach": 1800},
+        "previous": {"cost_per_thousand_reach": 1000},
         "planned_budget": 30000,
         "ads": [
-            {"name": "Bueno", "spend": 4000, "messages": 16, "reach": 3000},
-            {"name": "Caro", "spend": 4000, "messages": 4, "reach": 2500},
-            {"name": "Nada", "spend": 2000, "messages": 0, "reach": 200},
+            ad("Bueno", 4000, 100, 3000),
+            ad("Caro", 4000, 20, 2500),
+            ad("Nada", 2000, 0, 200),
         ],
-        "best_ads": [{"name": "Bueno", "spend": 4000, "messages": 16}],
     }
+    data["best_ads"] = [data["ads"][0]]
     recs = build_recommendations(data)
     kinds = [r["tipo"] for r in recs]
     assert kinds[:4] == ["pausar", "cambiar", "presupuesto", "frecuencia"]
+    assert "se pagó para visitas al perfil" in recs[0]["texto"]
     assert len(recs) <= 6
     for rec in recs:
         assert "—" not in rec["texto"]
@@ -611,3 +629,22 @@ def test_ads_sync_button_without_token(web):
     response = web.post("/publicidad/actualizar", data={"next": "//evil.com"})
     assert response.url.path == "/publicidad"
     assert "Falta configurar" in unquote_plus(str(response.url))
+
+
+def test_each_campaign_is_measured_by_what_it_paid_for():
+    from cmr_leads.ads.metrics import Totals
+    from cmr_leads.ads.objectives import cost_per_result, objective_key
+
+    # Casos reales de la cuenta de CMR.
+    assert objective_key("LINK_CLICKS", "VISIT_INSTAGRAM_PROFILE", "INSTAGRAM_PROFILE") == (
+        "visitas_perfil"
+    )
+    assert objective_key("OUTCOME_ENGAGEMENT", "LEAD_GENERATION", "INSTAGRAM_DIRECT") == "mensajes"
+    assert objective_key("OUTCOME_AWARENESS", "REACH", None) == "alcance"
+    assert objective_key("OUTCOME_ENGAGEMENT", "POST_ENGAGEMENT", None) == "interaccion"
+    assert objective_key(None, None, None) == "alcance"
+
+    totals = Totals(spend=15147, link_clicks=151, messages=0, reach=3393, engagement=1083)
+    assert round(cost_per_result("visitas_perfil", totals)) == 100  # $100 por visita
+    assert round(cost_per_result("alcance", totals)) == 4464  # cada 1.000 personas
+    assert cost_per_result("mensajes", totals) is None

@@ -68,11 +68,31 @@ Solo **lee** datos: no crea ni modifica anuncios.
 - Tope propio de `META_ADS_MAX_REQUESTS_PER_DAY` consultas (600) y reintentos automáticos con
   espera cuando Meta pide frenar.
 
+## Cada campaña se mide por lo que se pagó
+
+Meta cobra según el objetivo de cada campaña. El panel lo lee de Meta ("Se pagó para") y mide cada
+campaña con su resultado:
+
+| Se pagó para | Resultado | Costo por resultado |
+|---|---|---|
+| Alcance | Personas alcanzadas | Costo cada 1.000 personas |
+| Visitas al perfil | Visitas al perfil | Costo por visita |
+| Tráfico | Clics al enlace | Costo por clic |
+| Interacción | Interacciones | Costo por interacción |
+| Reproducciones | Reproducciones | Costo por reproducción |
+| Mensajes | Conversaciones iniciadas | Costo por mensaje |
+
+**La prioridad es el alcance**: el número que se compara entre todas las campañas es el **costo
+cada 1.000 personas alcanzadas**. Los "mejores" anuncios del reporte son los que cumplieron su
+objetivo y llegaron a más gente por peso. El análisis y las recomendaciones nunca critican una
+campaña por no traer algo para lo que no se pagó, y con pocos mensajes no sacan conclusiones.
+
 ## Cómo leer los números
 
 - **Mensajes**: conversaciones iniciadas desde el anuncio (WhatsApp, Messenger o Instagram). Es el
-  "resultado" de las campañas de CMR.
-- **Costo por mensaje** = inversión ÷ mensajes.
+  resultado solo de las campañas pagadas para mensajes.
+- **Interacciones**: reacciones, comentarios, guardados, compartidos y clics en la publicación.
+- **Costo cada 1.000 personas** = inversión ÷ alcance × 1.000.
 - **Alcance**: personas únicas. **No se suma día por día**: si la misma persona vio el anuncio el
   lunes y el martes, cuenta una vez. Por eso se guarda el alcance real de cada período (este mes,
   mes anterior, últimos 7 y 30 días y este año). Con fechas libres se pide en el momento a Meta; si no hay

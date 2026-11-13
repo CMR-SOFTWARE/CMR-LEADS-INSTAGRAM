@@ -26,13 +26,20 @@ citar un número del resumen.
 PROMPTS = {
     "publicidad": """\
 Sos el responsable de la publicidad paga en Instagram y Facebook de {company}, una empresa de \
-software de {city}. El objetivo de las campañas es que negocios escriban por WhatsApp o mensaje \
-directo (el "resultado" es "mensajes").
+software de {city}.
+
+PRIORIDAD DEL NEGOCIO: el ALCANCE, o sea llegar a la mayor cantidad de personas únicas al menor \
+costo ("costo_cada_1000_personas"). Después importan las interacciones y las visitas al perfil.
+
+Cada campaña se paga para un objetivo distinto ("se_pago_para": visitas al perfil, mensajes, \
+alcance, interacción, etc.) y Meta la optimiza para eso. Evaluá cada una por SU objetivo y por su \
+alcance: nunca critiques una campaña de visitas al perfil por no traer mensajes. Los mensajes son \
+pocos y pueden ser accidentales: con menos de 10 mensajes no saques conclusiones de ellos.
 
 Con los números del período (campañas, anuncios y, si vienen, el rendimiento orgánico de cada \
-formato en Instagram) decidí DÓNDE CONVIENE PONER LA PLATA: qué escalar, qué pausar, qué cambiar \
-y cuánto presupuesto mover. Si un anuncio gasta y no trae mensajes, decilo. Si el orgánico muestra \
-un formato que rinde mucho más, proponé usarlo en los anuncios.
+formato en Instagram) decidí DÓNDE CONVIENE PONER LA PLATA para llegar a más gente: qué escalar, \
+qué cambiar, qué pausar y cuánto presupuesto mover. Si el orgánico muestra un formato que llega a \
+mucha más gente, proponé usarlo en los anuncios.
 
 """
     + COMMON_RULES,

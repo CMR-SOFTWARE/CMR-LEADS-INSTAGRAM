@@ -8,11 +8,10 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cmr_leads.ads.sync import day
-from cmr_leads.db.models import Ad, AdAccount, AdAlert, AdCampaign, AdDailyMetric, utcnow
+from cmr_leads.db.models import Ad, AdAccount, AdAlert, utcnow
 
 # account_status de Meta
 DISABLED_STATUSES = {
@@ -151,53 +150,59 @@ def _ad_specs(session: Session, workspace_id: int) -> list[AlertSpec]:
     return specs
 
 
+MIN_RESULTS_TO_COMPARE = {"mensajes": 3, "alcance": 1000}
+DEFAULT_MIN_RESULTS = 20
+
+
 def _window(session: Session, workspace_id: int, since: date, until: date) -> dict[int, tuple]:
-    query = (
-        select(
-            AdDailyMetric.campaign_id,
-            func.coalesce(func.sum(AdDailyMetric.spend), 0),
-            func.coalesce(func.sum(AdDailyMetric.messages), 0),
+    """Por campaña: (objetivo, inversión, resultado) en la ventana.
+
+    Para campañas de alcance se usan las impresiones (el alcance no se puede sumar por días).
+    """
+    from cmr_leads.ads.metrics import level_rows
+    from cmr_leads.ads.objectives import result_of
+
+    rows = level_rows(session, workspace_id, "campanas", since, until)
+    window = {}
+    for r in rows:
+        value = (
+            r.totals.impressions if r.objective == "alcance" else result_of(r.objective, r.totals)
         )
-        .where(
-            AdDailyMetric.workspace_id == workspace_id,
-            AdDailyMetric.day >= day(since),
-            AdDailyMetric.day <= day(until),
-        )
-        .group_by(AdDailyMetric.campaign_id)
-    )
-    return {cid: (float(spend), int(msgs)) for cid, spend, msgs in session.execute(query)}
+        window[r.id] = (r.objective, r.totals.spend, int(value or 0), r.name)
+    return window
 
 
 def _cost_specs(session: Session, workspace_id: int, today: date, pct: float) -> list[AlertSpec]:
-    """Costo por mensaje de los últimos 7 días contra los 7 anteriores, por campaña."""
+    """Costo por resultado (según el objetivo) de los últimos 7 días contra los 7 anteriores."""
+    from cmr_leads.ads.objectives import OBJECTIVES
+
     current = _window(session, workspace_id, today - timedelta(days=6), today)
     previous = _window(session, workspace_id, today - timedelta(days=13), today - timedelta(days=7))
-    names = {
-        c.id: c.name
-        for c in session.scalars(select(AdCampaign).where(AdCampaign.workspace_id == workspace_id))
-    }
     specs = []
-    for campaign_id, (spend, messages) in current.items():
-        prev_spend, prev_messages = previous.get(campaign_id, (0.0, 0))
-        if prev_messages < MIN_MESSAGES_TO_COMPARE or not spend:
+    for campaign_id, (objective, spend, result, name) in current.items():
+        _o, prev_spend, prev_result, _n = previous.get(campaign_id, (objective, 0.0, 0, name))
+        minimum = MIN_RESULTS_TO_COMPARE.get(objective, DEFAULT_MIN_RESULTS)
+        if prev_result < minimum or not spend:
             continue
-        prev_cost = prev_spend / prev_messages
-        name = names.get(campaign_id, "Campaña")
+        goal = OBJECTIVES[objective]
+        per = 1000 if objective == "alcance" else 1
+        unit = "1.000 impresiones" if objective == "alcance" else goal.unit
+        prev_cost = prev_spend / prev_result * per
         key = f"costo_en_alza:{campaign_id}"
-        if messages == 0:
-            if spend >= prev_cost * 2:
+        if result == 0:
+            if spend >= prev_cost * 2 / per:
                 specs.append(
                     AlertSpec(
                         key,
                         "costo_en_alza",
                         "aviso",
-                        f"{name}: gastó sin recibir mensajes",
-                        f"En los últimos 7 días invirtió {ars(spend)} y no llegó ningún mensaje. "
-                        f"Antes cada mensaje costaba {ars(prev_cost)}.",
+                        f"{name}: gastó sin conseguir {goal.result.lower()}",
+                        f"En los últimos 7 días invirtió {ars(spend)} y no consiguió "
+                        f"{goal.result.lower()}. Antes pagaba {ars(prev_cost)} por {unit}.",
                     )
                 )
             continue
-        cost = spend / messages
+        cost = spend / result * per
         rise = (cost - prev_cost) / prev_cost * 100
         if rise > pct:
             specs.append(
@@ -205,8 +210,8 @@ def _cost_specs(session: Session, workspace_id: int, today: date, pct: float) ->
                     key,
                     "costo_en_alza",
                     "aviso",
-                    f"{name}: el costo por mensaje subió {rise:.0f}%",
-                    f"Pasó de {ars(prev_cost)} a {ars(cost)} por mensaje (últimos 7 días contra "
+                    f"{name}: el costo por {unit} subió {rise:.0f}%",
+                    f"Pasó de {ars(prev_cost)} a {ars(cost)} por {unit} (últimos 7 días contra "
                     "los 7 anteriores). Revisá las creatividades y el público.",
                 )
             )

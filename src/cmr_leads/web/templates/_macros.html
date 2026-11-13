@@ -1,5 +1,5 @@
 {% macro ic(name, label=None) -%}
-<svg class="ico" {% if label %}role="img" aria-label="{{ label }}"{% else %}aria-hidden="true"{% endif %} focusable="false"><use href="/static/icons.svg#i-{{ name }}"></use></svg>
+<svg class="ico" {% if label %}role="img" aria-label="{{ label }}"{% else %}aria-hidden="true"{% endif %} focusable="false"><use href="/static/icons.svg?v={{ asset_version }}#i-{{ name }}"></use></svg>
 {%- endmacro %}
 
 {% macro icon(kind) -%}

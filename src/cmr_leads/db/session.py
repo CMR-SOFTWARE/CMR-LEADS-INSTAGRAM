@@ -11,12 +11,19 @@ MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 def make_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite:///") and ":memory:" not in database_url:
         Path(database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(database_url)
+    is_sqlite = database_url.startswith("sqlite")
+    # Varios hilos escriben (panel, Instagram, publicidad): si la base está ocupada, esperar hasta
+    # 30 s en vez de fallar enseguida con "database is locked".
+    engine = create_engine(database_url, connect_args={"timeout": 30} if is_sqlite else {})
     if engine.dialect.name == "sqlite":
+        file_db = ":memory:" not in database_url and database_url not in ("sqlite://", "sqlite:///")
 
         @event.listens_for(engine, "connect")
         def _enable_fks(dbapi_conn, _record):
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
+            if file_db:
+                # WAL: se puede leer mientras otro hilo escribe.
+                dbapi_conn.execute("PRAGMA journal_mode=WAL")
 
     return engine
 

@@ -98,6 +98,12 @@ def _table(pdf: FPDF, headers: list[str], rows: list[list[str]], widths: list[fl
         pdf.ln()
 
 
+def _result(item: dict) -> str:
+    if not item.get("result_label"):
+        return fmt_int(item.get("messages")) + " mensajes"
+    return f"{fmt_int(item.get('result') or 0)} {item['result_label'].lower()}"
+
+
 def _ads_table(pdf: FPDF, ads: list[dict]) -> None:
     if not ads:
         pdf.set_font("Helvetica", "", 9)
@@ -106,17 +112,18 @@ def _ads_table(pdf: FPDF, ads: list[dict]) -> None:
         return
     _table(
         pdf,
-        ["Anuncio", "Inversión", "Mensajes", "Costo por mensaje"],
+        ["Anuncio", "Inversión", "Alcance", "Costo x 1.000", "Resultado"],
         [
             [
                 a["name"],
                 fmt_money(a["spend"]),
-                fmt_int(a["messages"]),
-                fmt_money(a["cost_per_message"]) if a["messages"] else "sin mensajes",
+                fmt_int(a.get("reach")),
+                fmt_money(a.get("cost_per_thousand_reach")),
+                _result(a),
             ]
             for a in ads
         ],
-        [86, 32, 26, 38],
+        [64, 28, 24, 28, 38],
     )
 
 
@@ -147,14 +154,18 @@ def render_report_pdf(data: dict, path: Path, company: str = "CMR Software Solut
     width = (pdf.w - pdf.l_margin - pdf.r_margin - 8) / 3
     y = pdf.get_y()
     kpis = [
-        ("Inversión", fmt_money(totals["spend"]), fmt_change(changes["spend"])),
         ("Alcance (personas)", fmt_int(totals["reach"]), fmt_change(changes["reach"])),
-        ("Clics al enlace", fmt_int(totals["link_clicks"]), fmt_change(changes["link_clicks"])),
-        ("Mensajes recibidos", fmt_int(totals["messages"]), fmt_change(changes["messages"])),
         (
-            "Costo por mensaje",
-            fmt_money(totals["cost_per_message"]),
-            fmt_change(changes["cost_per_message"], lower_is_better=True),
+            "Costo cada 1.000 personas",
+            fmt_money(totals.get("cost_per_thousand_reach")),
+            fmt_change(changes.get("cost_per_thousand_reach"), lower_is_better=True),
+        ),
+        ("Inversión", fmt_money(totals["spend"]), fmt_change(changes["spend"])),
+        ("Interacciones", fmt_int(totals.get("engagement")), fmt_change(changes.get("engagement"))),
+        (
+            "Visitas al perfil y clics",
+            fmt_int(totals["link_clicks"]),
+            fmt_change(changes["link_clicks"]),
         ),
         (
             "Impresiones",
@@ -176,18 +187,18 @@ def render_report_pdf(data: dict, path: Path, company: str = "CMR Software Solut
     if data["campaigns"]:
         _table(
             pdf,
-            ["Campaña", "Inversión", "Alcance", "Mensajes", "Costo por mensaje"],
+            ["Campaña", "Se pagó para", "Inversión", "Alcance", "Resultado"],
             [
                 [
                     c["name"],
+                    c.get("objective_label") or "s/d",
                     fmt_money(c["spend"]),
                     fmt_int(c["reach"]),
-                    fmt_int(c["messages"]),
-                    fmt_money(c["cost_per_message"]) if c["messages"] else "sin mensajes",
+                    _result(c),
                 ]
                 for c in data["campaigns"]
             ],
-            [70, 30, 26, 22, 34],
+            [62, 30, 26, 22, 42],
         )
     else:
         _ads_table(pdf, [])
@@ -216,8 +227,8 @@ def render_report_pdf(data: dict, path: Path, company: str = "CMR Software Solut
         0,
         4,
         clean(
-            "Datos de Meta (Instagram y Facebook). Los mensajes son conversaciones iniciadas "
-            "desde los anuncios. El alcance cuenta personas únicas del mes completo."
+            "Datos de Meta (Instagram y Facebook). Cada campaña se mide por el objetivo para el "
+            "que se pagó. El alcance cuenta personas únicas del mes completo."
         ),
     )
     path.parent.mkdir(parents=True, exist_ok=True)

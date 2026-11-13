@@ -1,9 +1,11 @@
 """Recomendaciones para el mes siguiente, con reglas simples y explicables.
 
-Recibe los datos ya calculados del reporte (dicts) para poder testearse sin base de datos.
+Cada anuncio se evalúa con el resultado de su objetivo (para qué se pagó) y el alcance es el
+número que se compara entre todos. Recibe los datos ya calculados del reporte (dicts) para
+poder testearse sin base de datos.
 """
 
-from statistics import median
+from statistics import mean, median
 
 from cmr_leads.ads.alerts import ars
 
@@ -13,10 +15,13 @@ UNSPENT_RATIO = 0.7
 EXPENSIVE_RATIO = 1.5
 LOW_REACH_RATIO = 0.25
 COST_CHANGE = 0.2
+NO_RESULT_SHARE = 0.15  # anuncios sin resultado que se llevaron al menos el 15% de la inversión
+MIN_REACH_TO_SCALE = 500
 
 
-def _cpm(item: dict) -> float | None:
-    return item["spend"] / item["messages"] if item.get("messages") else None
+def _unit_cost(ad: dict) -> str:
+    unit = ad.get("result_unit") or "resultado"
+    return f"{ars(ad['cost_per_result'])} por {unit}"
 
 
 def build_recommendations(data: dict) -> list[dict]:
@@ -36,28 +41,33 @@ def build_recommendations(data: dict) -> list[dict]:
         )
         return recs
 
-    avg_cost = totals.get("cost_per_message")
     total_spend = totals["spend"]
 
-    # 1. Anuncios que gastaron y no trajeron mensajes.
-    threshold = max((avg_cost or 0) * 1.5, total_spend * 0.05)
+    # 1. Anuncios que gastaron una parte grande y no trajeron el resultado de su objetivo.
     for ad in sorted(ads, key=lambda a: -a["spend"]):
-        if not ad["messages"] and ad["spend"] >= threshold:
+        if not ad.get("result") and ad["spend"] >= total_spend * NO_RESULT_SHARE:
+            label = (ad.get("result_label") or "resultados").lower()
             add(
                 "pausar",
-                f'Pausá "{ad["name"]}": invirtió {ars(ad["spend"])} y no trajo mensajes. '
-                "Usá ese presupuesto en los anuncios que sí funcionan.",
+                f'Revisá "{ad["name"]}": se pagó para {label} e invirtió {ars(ad["spend"])} '
+                f"sin conseguir ninguno. Si no mejora en una semana, pausalo.",
             )
 
-    # 2. Anuncios caros contra el promedio.
-    if avg_cost:
-        for ad in ads:
-            cost = _cpm(ad)
-            if cost and cost > avg_cost * EXPENSIVE_RATIO and ad["spend"] >= total_spend * 0.1:
+    # 2. Anuncios caros contra otros del mismo objetivo.
+    groups: dict[str, list[dict]] = {}
+    for ad in ads:
+        if ad.get("cost_per_result"):
+            groups.setdefault(ad.get("objective") or "alcance", []).append(ad)
+    for items in groups.values():
+        if len(items) < 2:
+            continue
+        avg = mean(a["cost_per_result"] for a in items)
+        for ad in items:
+            if ad["cost_per_result"] > avg * EXPENSIVE_RATIO and ad["spend"] >= total_spend * 0.1:
                 add(
                     "cambiar",
-                    f'Cambiá la imagen o el texto de "{ad["name"]}": cada mensaje costó '
-                    f"{ars(cost)} y el promedio de la cuenta fue {ars(avg_cost)}.",
+                    f'Cambiá la imagen o el texto de "{ad["name"]}": pagó {_unit_cost(ad)} y '
+                    f"el promedio de los anuncios con su mismo objetivo fue {ars(avg)}.",
                 )
 
     # 3. Presupuesto sin gastar.
@@ -91,31 +101,33 @@ def build_recommendations(data: dict) -> list[dict]:
                     "presupuesto de su conjunto o si el público es demasiado chico.",
                 )
 
-    # 6. Costo por mensaje contra el mes anterior.
-    prev_cost = previous.get("cost_per_message")
-    if avg_cost and prev_cost:
-        change = (avg_cost - prev_cost) / prev_cost
+    # 6. Costo de llegar a 1.000 personas contra el mes anterior.
+    cost = totals.get("cost_per_thousand_reach")
+    prev_cost = previous.get("cost_per_thousand_reach")
+    if cost and prev_cost:
+        change = (cost - prev_cost) / prev_cost
         if change > COST_CHANGE:
             add(
                 "costo",
-                f"El costo por mensaje subió {change * 100:.0f}% contra el mes anterior "
-                f"({ars(prev_cost)} a {ars(avg_cost)}). Probá creatividades nuevas antes de "
-                "subir el presupuesto.",
+                f"Llegar a 1.000 personas costó {change * 100:.0f}% más que el mes anterior "
+                f"({ars(prev_cost)} a {ars(cost)}). Probá creatividades nuevas antes de subir "
+                "el presupuesto.",
             )
         elif change < -COST_CHANGE:
             add(
                 "costo",
-                f"El costo por mensaje bajó {abs(change) * 100:.0f}% contra el mes anterior. "
-                "Mantené los anuncios que funcionan y no cambies todo de golpe.",
+                f"Llegar a 1.000 personas costó {abs(change) * 100:.0f}% menos que el mes "
+                "anterior. Mantené los anuncios que funcionan y no cambies todo de golpe.",
             )
 
-    # 7. Escalar el mejor anuncio.
+    # 7. Escalar el anuncio que llegó a más gente por peso.
     best = data.get("best_ads") or []
-    if best and best[0].get("messages", 0) >= 3:
+    if best and (best[0].get("reach") or 0) >= MIN_REACH_TO_SCALE:
         add(
             "escalar",
-            f'Subile de a 20% el presupuesto al conjunto de "{best[0]["name"]}", que consiguió '
-            f"mensajes al menor costo ({ars(_cpm(best[0]))} cada uno).",
+            f'Subile de a 20% el presupuesto a "{best[0]["name"]}": llegó a '
+            f"{best[0]['reach']} personas a {ars(best[0]['cost_per_thousand_reach'])} cada "
+            "1.000, el mejor costo de alcance del mes.",
         )
 
     if not recs:

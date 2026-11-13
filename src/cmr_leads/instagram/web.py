@@ -34,36 +34,48 @@ def _pct(current, previous):
     return (current - previous) / previous
 
 
+def _caption(post, size: int = 40) -> str:
+    text = ((post.caption or "Sin texto").split("\n")[0]).strip()
+    return text if len(text) <= size else text[: size - 1] + "…"
+
+
 def build_charts(d: dict) -> dict:
-    """Configuración de cada gráfico de la pantalla."""
+    """Un dato por gráfico, con el valor escrito y el mejor resaltado."""
     charts = {}
     s = d["series"]
-    charts["ig-series"] = chart(
-        "ig-series",
+    labels = [_label(x["day"], d["monthly"]) for x in s]
+    charts["ig-views"] = chart(
+        "ig-views",
         "bar",
-        [_label(x["day"], d["monthly"]) for x in s],
+        labels,
+        [dataset("Visualizaciones", [x["views"] for x in s], "azul")],
+        highlight="max",
+    )
+    charts["ig-visits"] = chart(
+        "ig-visits",
+        "line",
+        labels,
         [
-            dataset("Vistas", [x["views"] for x in s], "azul"),
-            dataset("Visitas al perfil", [x["profile_views"] for x in s], "ig", "line", "y1"),
-            dataset("Clics a links y botones", [x["clicks"] for x in s], "turquesa", "line", "y1"),
+            dataset("Visitas al perfil", [x["profile_views"] for x in s], "ig", "line"),
+            dataset("Clics a links y botones", [x["clicks"] for x in s], "turquesa", "line"),
         ],
     )
     if d["links"]:
         charts["ig-links"] = chart(
             "ig-links",
-            "doughnut",
+            "bar",
             [x["name"] for x in d["links"]],
-            [dataset("Toques", [x["value"] for x in d["links"]])],
+            [dataset("Toques", [x["value"] for x in d["links"]], "turquesa")],
+            horizontal=True,
+            highlight="max",
         )
     if d["formats"]:
         charts["ig-formats"] = chart(
             "ig-formats",
             "bar",
             [f["name"] for f in d["formats"]],
-            [
-                dataset("Vistas promedio", [f["avg_views"] for f in d["formats"]], "azul"),
-                dataset("Alcance promedio", [f["avg_reach"] for f in d["formats"]], "turquesa"),
-            ],
+            [dataset("Vistas promedio", [f["avg_views"] for f in d["formats"]], "azul")],
+            highlight="max",
         )
     for f in d["formats"]:
         t = f["times"]
@@ -72,12 +84,30 @@ def build_charts(d: dict) -> dict:
             "bar",
             SHORT_DAYS,
             [dataset("Vistas promedio", [x["avg"] for x in t["days"]], "azul")],
+            highlight="max",
         )
         charts[f"ig-slot-{f['key']}"] = chart(
             f"ig-slot-{f['key']}",
             "bar",
             [x["name"] for x in t["slots"]],
             [dataset("Vistas promedio", [x["avg"] for x in t["slots"]], "turquesa")],
+            highlight="max",
+        )
+    top = [p for p in d["posts"] if (p.views or p.reach)][:10]
+    if top:
+        charts["ig-top"] = chart(
+            "ig-top",
+            "bar",
+            [f"{_caption(p)} ({p.kind})" for p in top],
+            [
+                dataset(
+                    "Visualizaciones",
+                    [p.views if p.views is not None else p.reach for p in top],
+                    "azul",
+                )
+            ],
+            horizontal=True,
+            highlight="max",
         )
     st = d["stories"]
     if st["total"]:
@@ -86,25 +116,14 @@ def build_charts(d: dict) -> dict:
             "ig-stories",
             "bar",
             [_label(x["day"], False) for x in days],
-            [
-                dataset("Historias subidas", [x["count"] for x in days], "ig"),
-                dataset("Vistas", [x["views"] for x in days], "azul", "line", "y1"),
-            ],
+            [dataset("Historias subidas", [x["count"] for x in days], "ig")],
         )
         charts["ig-stories-week"] = chart(
             "ig-stories-week",
             "bar",
             SHORT_DAYS,
-            [
-                dataset("Vistas por historia", [x["avg_views"] for x in st["weekdays"]], "azul"),
-                dataset(
-                    "Historias por día",
-                    [x["avg_count"] for x in st["weekdays"]],
-                    "ig",
-                    "line",
-                    "y1",
-                ),
-            ],
+            [dataset("Vistas por historia", [x["avg_views"] for x in st["weekdays"]], "ig")],
+            highlight="max",
         )
     return charts
 
@@ -242,10 +261,11 @@ def register_instagram_routes(
     def stories_loop() -> None:
         """Historias: Meta solo las muestra 24 h, así que se leen seguido con la app abierta."""
         from cmr_leads.instagram.client import GraphClient
-        from cmr_leads.instagram.stats import StatsResult, sync_stories
+        from cmr_leads.instagram.stats import StatsResult, sync_stats, sync_stories
         from cmr_leads.instagram.sync import daily_budget_guard
         from cmr_leads.pipeline.budget import DailyBudget
 
+        last_full = None
         while True:
             try:
                 with db() as (session, ws):
@@ -257,13 +277,17 @@ def register_instagram_routes(
                         settings.meta_graph_api_version,
                         on_request=daily_budget_guard(budget),
                     )
-                    sync_stories(
-                        session,
-                        ws.id,
-                        client,
-                        settings.instagram_business_account_id,
-                        StatsResult(),
+                    ig_id = settings.instagram_business_account_id
+                    full_due = settings.instagram_stats_hours and (
+                        last_full is None
+                        or time.monotonic() - last_full >= settings.instagram_stats_hours * 3600
                     )
+                    if full_due:
+                        # Días (completa el año de a tandas), publicaciones e historias.
+                        last_full = time.monotonic()
+                        log.info(sync_stats(session, ws.id, client, ig_id).summary())
+                    else:
+                        sync_stories(session, ws.id, client, ig_id, StatsResult())
             except Exception:  # noqa: BLE001 - nunca debe tirar la app
                 log.exception("Falló la lectura de historias de Instagram")
             time.sleep(max(15, settings.instagram_stories_minutes) * 60)

@@ -53,28 +53,48 @@ def _ad_dict(row) -> dict:
         "impressions": t.impressions,
         "link_clicks": t.link_clicks,
         "messages": t.messages,
+        "engagement": t.engagement,
+        "video_views": t.video_views,
+        "objective": row.objective,
+        "objective_label": row.goal.label,
+        "result_label": row.goal.result,
+        "result_unit": row.goal.unit,
+        "result": row.result,
+        "cost_per_result": row.cost_per_result,
+        "cost_per_thousand_reach": t.cost_per_thousand_reach,
         "reach": t.reach,
         "cost_per_message": t.cost_per_message,
     }
 
 
 def rank_ads(ads: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Mejores: más baratos por mensaje. Peores: más caros, y primero los que no trajeron nada.
+    """Mejores: los que llegaron a más gente por peso (menor costo cada 1.000 personas).
 
-    Con pocos anuncios se reparten mitad y mitad, para que las dos listas tengan algo que
-    comparar (con 2 anuncios: 1 mejor y 1 peor).
+    Peores: primero los que gastaron sin traer el resultado de su objetivo, después los que más
+    caro pagaron el alcance. Con pocos anuncios se reparten mitad y mitad.
     """
     spent = [a for a in ads if a["spend"] > 0]
-    with_results = sorted(
-        (a for a in spent if a["messages"]), key=lambda a: (a["cost_per_message"], -a["messages"])
+    # Para ser "mejor" tiene que haber cumplido su objetivo y después llegar barato a la gente.
+    with_reach = sorted(
+        (a for a in spent if a.get("cost_per_thousand_reach") and a.get("result")),
+        key=lambda a: (a["cost_per_thousand_reach"], -(a.get("reach") or 0)),
     )
-    best_count = min(TOP_N, max(1, len(spent) // 2)) if len(spent) > 1 else len(with_results)
-    best = with_results[:best_count]
-    best_names = {id(a) for a in best}
-    no_results = sorted((a for a in spent if not a["messages"]), key=lambda a: -a["spend"])
-    worst_pool = no_results + list(reversed(with_results))
-    worst = [a for a in worst_pool if id(a) not in best_names][:TOP_N]
-    return best, worst
+    best_count = min(TOP_N, max(1, len(spent) // 2)) if len(spent) > 1 else len(with_reach)
+    best = with_reach[:best_count]
+    best_ids = {id(a) for a in best}
+    no_results = sorted((a for a in spent if not a.get("result")), key=lambda a: -a["spend"])
+    by_cost = sorted(
+        (a for a in spent if a.get("cost_per_thousand_reach")),
+        key=lambda a: -a["cost_per_thousand_reach"],
+    )
+    worst_pool = no_results + by_cost
+    worst, seen = [], set()
+    for a in worst_pool:
+        if id(a) in best_ids or id(a) in seen:
+            continue
+        seen.add(id(a))
+        worst.append(a)
+    return best, worst[:TOP_N]
 
 
 def planned_budget(session: Session, workspace_id: int, days: int) -> float:
@@ -121,7 +141,15 @@ def build_report_data(
         "previous_label": month_label(prev_since),
         "changes": {
             key: pct_change(current[key], prev[key])
-            for key in ("spend", "reach", "link_clicks", "messages", "cost_per_message")
+            for key in (
+                "spend",
+                "reach",
+                "link_clicks",
+                "messages",
+                "cost_per_message",
+                "engagement",
+                "cost_per_thousand_reach",
+            )
         },
         "campaigns": [c for c in campaigns if c["spend"] > 0],
         "ads": ads,

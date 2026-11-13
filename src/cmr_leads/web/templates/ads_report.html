@@ -10,14 +10,15 @@
 {% macro ads_table(ads) -%}
   {% if ads %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Anuncio</th><th class="num">Inversión</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th></tr></thead>
+    <thead><tr><th>Anuncio</th><th class="num">Inversión</th><th class="num">Alcance</th><th class="num">Costo cada 1.000 personas</th><th class="num">Resultado</th></tr></thead>
     <tbody>
     {% for a in ads %}
     <tr>
       <td>{{ a.name }}{% if a.campaign %}<div class="muted small">{{ a.campaign }}</div>{% endif %}</td>
       <td class="num">{{ a.spend|money }}</td>
-      <td class="num">{{ a.messages|num }}</td>
-      <td class="num">{{ a.cost_per_message|money if a.messages else "sin mensajes" }}</td>
+      <td class="num">{{ a.reach|num }}</td>
+      <td class="num">{{ a.cost_per_thousand_reach|money }}</td>
+      <td class="num">{{ a.result|num }}{% if a.result_label %}<div class="muted small">{{ a.result_label|lower }}</div>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -40,8 +41,9 @@
   <div class="kpi accent"><div class="value">{{ d.totals.spend|money }}</div><div class="label">Inversión {{ delta(d.changes.spend) }}</div></div>
   <div class="kpi"><div class="value">{{ d.totals.reach|num }}</div><div class="label">Alcance {{ delta(d.changes.reach) }}</div></div>
   <div class="kpi"><div class="value">{{ d.totals.link_clicks|num }}</div><div class="label">Clics al enlace {{ delta(d.changes.link_clicks) }}</div></div>
+  <div class="kpi"><div class="value">{{ d.totals.cost_per_thousand_reach|money }}</div><div class="label">Costo cada 1.000 personas {{ delta(d.changes.cost_per_thousand_reach, true) }}</div></div>
+  <div class="kpi"><div class="value">{{ d.totals.engagement|num }}</div><div class="label">Interacciones {{ delta(d.changes.engagement) }}</div></div>
   <div class="kpi"><div class="value">{{ d.totals.messages|num }}</div><div class="label">Mensajes {{ delta(d.changes.messages) }}</div></div>
-  <div class="kpi"><div class="value">{{ d.totals.cost_per_message|money }}</div><div class="label">Costo por mensaje {{ delta(d.changes.cost_per_message, true) }}</div></div>
 </div>
 
 <div class="card">
@@ -58,15 +60,16 @@
   <div class="card-head"><h2>Campañas</h2></div>
   {% if d.campaigns %}
   <div class="table-wrap"><table>
-    <thead><tr><th>Campaña</th><th class="num">Inversión</th><th class="num">Alcance</th><th class="num">Mensajes</th><th class="num">Costo por mensaje</th></tr></thead>
+    <thead><tr><th>Campaña</th><th>Se pagó para</th><th class="num">Inversión</th><th class="num">Alcance</th><th class="num">Costo cada 1.000 personas</th><th class="num">Resultado</th></tr></thead>
     <tbody>
     {% for c in d.campaigns %}
     <tr>
       <td>{{ c.name }}</td>
+      <td>{{ c.objective_label or "s/d" }}</td>
       <td class="num">{{ c.spend|money }}</td>
       <td class="num">{{ c.reach|num }}</td>
-      <td class="num">{{ c.messages|num }}</td>
-      <td class="num">{{ c.cost_per_message|money if c.messages else "sin mensajes" }}</td>
+      <td class="num">{{ c.cost_per_thousand_reach|money }}</td>
+      <td class="num">{{ c.result|num }}{% if c.result_label %}<div class="muted small">{{ c.result_label|lower }}</div>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

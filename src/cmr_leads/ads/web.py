@@ -74,16 +74,20 @@ ACCOUNT_STATUS = {
 LIVE_REACH_TTL = 600
 
 
+def _missing(value) -> bool:
+    return value is None or not isinstance(value, int | float)
+
+
 def fmt_int(value) -> str:
-    return "s/d" if value is None else f"{int(value):,}".replace(",", ".")
+    return "s/d" if _missing(value) else f"{int(value):,}".replace(",", ".")
 
 
 def fmt_money(value) -> str:
-    return "s/d" if value is None else ars(value)
+    return "s/d" if _missing(value) else ars(value)
 
 
 def fmt_ratio(value) -> str:
-    return "s/d" if value is None else f"{value * 100:.1f}%".replace(".", ",")
+    return "s/d" if _missing(value) else f"{value * 100:.1f}%".replace(".", ",")
 
 
 def resolve_period(periodo: str, desde: str, hasta: str, today: date) -> tuple[str, date, date]:
@@ -101,44 +105,56 @@ def resolve_period(periodo: str, desde: str, hasta: str, today: date) -> tuple[s
 
 
 def ads_charts(series: list[dict], monthly: bool, campaigns: list, rows: list) -> dict:
-    """Gráficos del resumen: inversión y mensajes en el tiempo, reparto y comparación por fila."""
+    """Un dato por gráfico, con el valor escrito y el mejor resaltado."""
     fmt = "%m/%Y" if monthly else "%d/%m"
+    labels = [d["day"].strftime(fmt) for d in series]
     charts = {
-        "ad-series": chart(
-            "ad-series",
+        "ad-reach": chart(
+            "ad-reach",
             "bar",
-            [d["day"].strftime(fmt) for d in series],
-            [
-                dataset("Inversión", [round(d["spend"]) for d in series], "azul", fmt="money"),
-                dataset("Mensajes", [d["messages"] for d in series], "turquesa", "line", "y1"),
-            ],
-        )
+            labels,
+            [dataset("Personas alcanzadas", [d.get("reach", 0) for d in series], "turquesa")],
+            highlight="max",
+        ),
+        "ad-spend": chart(
+            "ad-spend",
+            "bar",
+            labels,
+            [dataset("Inversión", [round(d["spend"]) for d in series], "azul", fmt="money")],
+        ),
     }
     spent = [c for c in campaigns if c.totals.spend > 0]
     if spent:
         charts["ad-split"] = chart(
             "ad-split",
-            "doughnut",
+            "bar",
             [_short(c.name) for c in spent],
-            [dataset("Inversión", [round(c.totals.spend) for c in spent], fmt="money")],
+            [dataset("Inversión", [round(c.totals.spend) for c in spent], "azul", fmt="money")],
+            horizontal=True,
         )
-    with_spend = [r for r in rows if r.totals.spend > 0]
-    if with_spend:
+    with_reach = [r for r in rows if r.totals.cost_per_thousand_reach]
+    if with_reach:
         charts["ad-cost"] = chart(
             "ad-cost",
             "bar",
-            [_short(r.name) for r in with_spend],
+            [_short(r.name) for r in with_reach],
             [
                 dataset(
-                    "Inversión", [round(r.totals.spend) for r in with_spend], "azul", fmt="money"
-                ),
-                dataset("Mensajes", [r.totals.messages for r in with_spend], "turquesa", axis="y1"),
+                    "Costo cada 1.000 personas",
+                    [round(r.totals.cost_per_thousand_reach) for r in with_reach],
+                    "turquesa",
+                    fmt="money",
+                )
             ],
+            horizontal=True,
+            highlight="min",
         )
     return charts
 
 
 def _short(name: str, size: int = 32) -> str:
+    # Meta nombra "Instagram post: ..." a las publicaciones promocionadas: no aporta en el gráfico.
+    name = name.removeprefix("Instagram post: ").removeprefix("Facebook post: ").strip()
     return name if len(name) <= size else name[: size - 1] + "…"
 
 
@@ -155,12 +171,20 @@ def ads_facts(totals, previous, changes, campaigns, ads, organic, since, until) 
             "nombre": r.name,
             "campana": r.parent,
             "estado": r.status,
+            "se_pago_para": r.goal.label,
+            "resultado_del_objetivo": {r.goal.result: r.result},
+            "costo_por_resultado": round(r.cost_per_result) if r.cost_per_result else None,
             "inversion": round(t.spend),
-            "alcance": t.reach,
+            "alcance_personas": t.reach,
+            "costo_cada_1000_personas": (
+                round(t.cost_per_thousand_reach) if t.cost_per_thousand_reach else None
+            ),
+            "frecuencia": round(t.frequency, 2) if t.frequency else None,
             "impresiones": t.impressions,
-            "clics": t.link_clicks,
+            "interacciones": t.engagement,
+            "reproducciones": t.video_views,
+            "clics_o_visitas_al_perfil": t.link_clicks,
             "mensajes": t.messages,
-            "costo_por_mensaje": round(t.cost_per_message) if t.cost_per_message else None,
             "ctr_pct": round(t.ctr * 100, 2) if t.ctr else None,
             "presupuesto_diario": r.budget,
         }
@@ -286,6 +310,10 @@ def register_ads_routes(
                     "cost_per_message": pct_change(
                         totals.cost_per_message, previous.cost_per_message
                     ),
+                    "engagement": pct_change(totals.engagement, previous.engagement),
+                    "cost_per_thousand_reach": pct_change(
+                        totals.cost_per_thousand_reach, previous.cost_per_thousand_reach
+                    ),
                 },
                 rows=rows,
                 series=series,
@@ -326,8 +354,11 @@ def register_ads_routes(
             previous = account_totals(session, ws.id, prev_since, prev_until, None)
             changes = {
                 "inversion": pct_change(totals.spend, previous.spend),
+                "interacciones": pct_change(totals.engagement, previous.engagement),
+                "costo_cada_1000_personas": pct_change(
+                    totals.cost_per_thousand_reach, previous.cost_per_thousand_reach
+                ),
                 "mensajes": pct_change(totals.messages, previous.messages),
-                "costo_por_mensaje": pct_change(totals.cost_per_message, previous.cost_per_message),
             }
             campaigns = level_rows(session, ws.id, "campanas", since, until)
             ads = level_rows(session, ws.id, "anuncios", since, until, campaign_id)

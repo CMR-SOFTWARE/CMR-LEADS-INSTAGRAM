@@ -43,7 +43,7 @@ MEDIA_FIELDS = (
 )
 STORY_FIELDS = "id,caption,media_type,media_product_type,timestamp,permalink"
 REFRESH_DAYS = 3  # Meta corrige los últimos días: se vuelven a pedir siempre
-BACKFILL_PER_SYNC = 60  # días de historia que se completan por actualización
+BACKFILL_PER_SYNC = 120  # días de historia que se completan por actualización
 FRESH_POST_DAYS = 30  # publicaciones que todavía suman vistas: se refrescan siempre
 STABLE_AFTER_DAYS = 7  # una publicación leída 7 días después de salir ya no cambia mucho
 FATAL = (RateLimitedError, AuthError)
@@ -188,7 +188,7 @@ def sync_days(
         row.link_breakdown = detail or None
         row.fetched_at = utcnow()
         result.days += 1
-        session.flush()
+        session.commit()  # día por día: la base no queda tomada mientras se consulta a Meta
 
 
 # ---------------- Publicaciones e historias ----------------
@@ -273,7 +273,7 @@ def sync_media(
                 break
             save_media(session, workspace_id, client, item, cache, result.warnings)
             result.posts += 1
-        session.flush()
+            session.commit()
         after = ((page.get("paging") or {}).get("cursors") or {}).get("after")
         if reached_start or not after or not (page.get("paging") or {}).get("next"):
             return
