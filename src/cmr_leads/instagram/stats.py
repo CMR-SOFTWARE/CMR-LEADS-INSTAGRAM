@@ -44,6 +44,7 @@ MEDIA_FIELDS = (
 STORY_FIELDS = "id,caption,media_type,media_product_type,timestamp,permalink"
 REFRESH_DAYS = 3  # Meta corrige los últimos días: se vuelven a pedir siempre
 BACKFILL_PER_SYNC = 120  # días de historia que se completan por actualización
+BACKFILL_RESERVE = 150  # consultas que se dejan libres para publicaciones y días recientes
 FRESH_POST_DAYS = 30  # publicaciones que todavía suman vistas: se refrescan siempre
 STABLE_AFTER_DAYS = 7  # una publicación leída 7 días después de salir ya no cambia mucho
 FATAL = (RateLimitedError, AuthError)
@@ -148,8 +149,16 @@ def days_to_fetch(session: Session, workspace_id: int, today: date) -> tuple[lis
 
 
 def sync_days(
-    session: Session, workspace_id: int, client: GraphClient, ig_id: str, today: date, result
+    session: Session,
+    workspace_id: int,
+    client: GraphClient,
+    ig_id: str,
+    today: date,
+    result,
+    budget_left=None,
 ) -> None:
+    """`budget_left` (opcional) devuelve las consultas que quedan: el relleno de días viejos
+    se corta antes de gastarlas todas, para no dejar sin cupo al resto."""
     days, result.pending_days = days_to_fetch(session, workspace_id, today)
     existing = {
         r.day.date(): r
@@ -158,6 +167,10 @@ def sync_days(
         )
     }
     for day in days:
+        old = (today - day).days >= REFRESH_DAYS
+        if old and budget_left is not None and budget_left() < BACKFILL_RESERVE:
+            result.pending_days += sum(1 for d in days if d <= day)
+            break
         since, until = _day_bounds(day)
         params = {"period": "day", "metric_type": "total_value", "since": since, "until": until}
         values = _insights(client, f"{ig_id}/insights", DAY_METRICS, result.warnings, **params)
@@ -291,15 +304,22 @@ def sync_stories(
 
 
 def sync_stats(
-    session: Session, workspace_id: int, client: GraphClient, ig_id: str, today: date | None = None
+    session: Session,
+    workspace_id: int,
+    client: GraphClient,
+    ig_id: str,
+    today: date | None = None,
+    include_stories: bool = True,
+    budget_left=None,
 ) -> StatsResult:
     """Historias, publicaciones y días. Guarda por etapas para no bloquear la base."""
     today = today or local_now().date()
     result = StatsResult()
-    sync_stories(session, workspace_id, client, ig_id, result)
-    session.commit()
+    if include_stories:
+        sync_stories(session, workspace_id, client, ig_id, result)
+        session.commit()
     sync_media(session, workspace_id, client, ig_id, today, result)
     session.commit()
-    sync_days(session, workspace_id, client, ig_id, today, result)
+    sync_days(session, workspace_id, client, ig_id, today, result, budget_left)
     session.commit()
     return result

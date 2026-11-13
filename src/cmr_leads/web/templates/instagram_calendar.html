@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ic %}
+{% block title %}Calendario de Instagram · CMR Lead Finder{% endblock %}
+{% set conf_chip = {"alta": "green", "media": "amber", "baja": ""} %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Calendario de Instagram</h1>
+    <p>Qué subir cada día y a qué hora. Se rearma solo con las estadísticas: cuanto más publiques, mejor queda.</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/instagram">Volver a Instagram</a>
+    <a class="btn btn-primary" href="/instagram/calendario.ics?mes={{ c.month.strftime('%Y-%m') }}">{{ ic("calendar") }} Pasar a Google Calendar</a>
+  </div>
+</div>
+
+<div class="cal-nav">
+  <a class="btn" href="?mes={{ c.prev.strftime('%Y-%m') }}" aria-label="Mes anterior">‹</a>
+  <h2>{{ c.title }}</h2>
+  <a class="btn" href="?mes={{ c.next.strftime('%Y-%m') }}" aria-label="Mes siguiente">›</a>
+</div>
+
+<div class="grid grid-2" style="margin-top:12px">
+  <div class="card">
+    <div class="card-head"><h2>El plan del mes</h2></div>
+    <p class="muted small" style="margin-top:0">{{ c.per_week }} publicaciones por semana{% if c.current_per_week < c.per_week %} (en las últimas 8 semanas subiste {{ c.current_per_week|string|replace(".", ",") }} por semana){% endif %}, más historias todos los días.</p>
+    <ul class="cal-plan">
+      {% for i in c.week_plan %}
+      <li>
+        <span class="cal-chip k-{{ i.kind }}">{{ i.label }}</span>
+        <div><b>{{ c.weekdays[i.weekday] }} a las {{ i.time }}</b> <span class="muted small">{{ i.times }} {{ "vez" if i.times == 1 else "veces" }} en el mes</span> <span class="chip {{ conf_chip[i.confidence] }}">confianza {{ i.confidence }}</span>
+          <div class="muted small">{{ i.why }}</div></div>
+      </li>
+      {% endfor %}
+      {% if c.test %}
+      <li>
+        <span class="cal-chip k-test">Prueba</span>
+        <div><b>{{ c.weekdays[c.test.weekday] }} a las {{ c.test.time }}</b>, una vez en el mes ({{ c.test.label|lower }})
+          <div class="muted small">{{ c.test.why }}</div></div>
+      </li>
+      {% endif %}
+      <li>
+        <span class="cal-chip k-historia">Historias</span>
+        <div><b>{{ c.stories.count }} por día</b>, en las franjas de {{ c.stories.slots|join(" y ") }} <span class="chip {{ conf_chip[c.stories.confidence] }}">confianza {{ c.stories.confidence }}</span>
+          <div class="muted small">
+            {% if c.stories.source == "historias" %}Horarios elegidos por las vistas de tus historias.
+            {% else %}Todavía hay pocas historias guardadas ({{ c.stories.samples }} en {{ c.stories.tracked_days }} días; Meta solo deja leerlas durante 24 h): por ahora los horarios salen de lo que funciona en tus publicaciones y se ajustan solos cuando haya 10 o más.{% endif %}
+          </div></div>
+      </li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Este mes</h2></div>
+    <div class="cal-totals">
+      {% set plural = {"Reel": "reels", "Carrusel": "carruseles", "Imagen": "imágenes"} %}
+      {% for name, n in c.totals.items() %}<div><b>{{ n }}</b><span>{{ plural[name] if n != 1 else name|lower }}</span></div>{% endfor %}
+      <div><b>{{ c.stories.count }}</b><span>historias por día</span></div>
+    </div>
+    <p class="muted small">Se arma con {{ c.samples }} publicaciones sin publicidad del último año{% if c.promoted_excluded %} (se dejan afuera {{ c.promoted_excluded }} promocionadas, porque su alcance incluye lo pagado){% endif %}. Cada vez que abrís esta página se recalcula con los datos nuevos.</p>
+    <h3 style="margin:14px 0 6px">Ideas: lo que mejor te funcionó</h3>
+    {% for kind, posts in c.inspiration.items() %}
+    <div class="cal-ideas"><span class="cal-chip k-{{ kind }}">{{ {"reel": "Reel", "carrusel": "Carrusel", "imagen": "Imagen"}[kind] }}</span>
+      <ul>{% for title, link in posts %}<li>{% if link %}<a href="{{ link }}" target="_blank" rel="noopener">{{ title }}</a>{% else %}{{ title }}{% endif %}</li>{% endfor %}</ul>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="cal-legend muted small">
+    <span><span class="cal-chip k-reel">Reel</span> <span class="cal-chip k-carrusel">Carrusel</span> <span class="cal-chip k-imagen">Imagen</span> <span class="cal-chip k-historia">Historias</span> <span class="cal-chip k-test">Prueba</span> lo que conviene subir</span>
+    <span><span class="cal-done ok">✓</span> lo que subiste ese día</span>
+  </div>
+  <div class="cal-grid" role="table" aria-label="Calendario de {{ c.title }}">
+    <div class="cal-row cal-head" role="row">{% for d in c.weekdays %}<div role="columnheader">{{ d }}</div>{% endfor %}</div>
+    {% for row in c.weeks %}
+    <div class="cal-row" role="row">
+      {% for cell in row %}
+      <div class="cal-cell{{ ' out' if not cell.in_month }}{{ ' past' if cell.past }}{{ ' today' if cell.today }}" role="cell">
+        <div class="cal-date"><span class="cal-wd">{{ c.weekdays[cell.date.weekday()] }}</span> {{ cell.date.day }}</div>
+        {% if cell.in_month %}
+          {% for i in cell["items"] %}
+          <div class="cal-chip k-{{ 'test' if i.test else i.kind }}" title="{{ i.why }}">{{ i.label }}{{ " (prueba)" if i.test }} · {{ i.time }}</div>
+          {% endfor %}
+          <div class="cal-chip k-historia" title="Franjas: {{ cell.stories.slots|join(', ') }}">{{ cell.stories.count }} historias</div>
+          {% if cell.past or cell.today %}
+            {% for a in cell.done if a.kind != "historia" %}
+            <div class="cal-done ok" title="{{ a.views }} vistas">✓ {{ {"reel": "Reel", "carrusel": "Carrusel", "imagen": "Imagen"}[a.kind] }} {{ a.time }}</div>
+            {% endfor %}
+            {% if cell.stories_done %}<div class="cal-done ok">✓ {{ cell.stories_done }} historia{{ "s" if cell.stories_done != 1 }}</div>{% endif %}
+          {% endif %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Cómo se arma</h2></div>
+  <ul class="muted small" style="margin:0; padding-left:18px">
+    <li><b>Cuántas por semana:</b> las que venís subiendo en las últimas 8 semanas, con un mínimo de 2 y un máximo de 5.</li>
+    <li><b>Qué formato:</b> en proporción a cuántas vistas consigue cada formato sin publicidad.</li>
+    <li><b>Qué día y hora:</b> el promedio de vistas de cada día y franja. Cuando hay pocos datos se acerca al promedio general, para que una sola publicación que explotó no defina todo.</li>
+    <li><b>La prueba del mes:</b> una publicación va a un día que casi no probaste, para aprender si funciona.</li>
+    <li>Que un día rinda más no prueba que el día sea la causa: puede ser el contenido. Por eso se sigue midiendo.</li>
+  </ul>
+</div>
+{% endblock %}

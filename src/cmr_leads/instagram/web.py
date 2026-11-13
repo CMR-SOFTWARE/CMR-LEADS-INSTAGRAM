@@ -5,7 +5,7 @@ import time
 from datetime import date, timedelta
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from cmr_leads.ads.web import PERIODS, resolve_period
 from cmr_leads.advice import get_advice, request_advice
@@ -265,6 +265,42 @@ def register_instagram_routes(
                 ig_offset=timedelta(hours=3),
             )
 
+    def calendar_month(mes: str, today: date) -> date:
+        try:
+            year, month = (int(x) for x in mes.split("-")[:2])
+            return date(year, month, 1)
+        except ValueError:
+            return today.replace(day=1)
+
+    def calendar_for(session, ws_id: int, mes: str) -> dict:
+        from sqlalchemy import select
+
+        from cmr_leads.db.models import Ad
+        from cmr_leads.instagram.calendar import build_calendar
+
+        today = local_now().date()
+        names = list(session.scalars(select(Ad.name).where(Ad.workspace_id == ws_id)))
+        return build_calendar(session, ws_id, calendar_month(mes, today), today, names)
+
+    @app.get("/instagram/calendario", response_class=HTMLResponse)
+    def instagram_calendar(request: Request, mes: str = ""):
+        with db() as (session, ws):
+            c = calendar_for(session, ws.id, mes)
+            return render(request, "instagram_calendar.html", active="instagram", c=c)
+
+    @app.get("/instagram/calendario.ics")
+    def instagram_calendar_ics(mes: str = ""):
+        from cmr_leads.instagram.calendar import to_ics
+
+        with db() as (session, ws):
+            c = calendar_for(session, ws.id, mes)
+        name = f"calendario-instagram-{c['month']:%Y-%m}.ics"
+        return Response(
+            to_ics(c, settings.company_name),
+            media_type="text/calendar; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
     @app.post("/instagram/analizar")
     def instagram_advice(
         periodo: str = Form("30d"),
@@ -308,6 +344,17 @@ def register_instagram_routes(
                         on_request=daily_budget_guard(budget),
                     )
                     ig_id = settings.instagram_business_account_id
+                    # Las historias primero y con su propio cupo: si se pierden no vuelven.
+                    stories_budget = DailyBudget(
+                        session, ws.id, "meta_stories", settings.meta_max_stories_requests_per_day
+                    )
+                    stories_client = GraphClient(
+                        settings.meta_access_token,
+                        settings.meta_graph_api_version,
+                        on_request=daily_budget_guard(stories_budget),
+                    )
+                    sync_stories(session, ws.id, stories_client, ig_id, StatsResult())
+                    session.commit()
                     full_due = settings.instagram_stats_hours and (
                         last_full is None
                         or time.monotonic() - last_full >= settings.instagram_stats_hours * 3600
@@ -315,9 +362,15 @@ def register_instagram_routes(
                     if full_due:
                         # Días (completa el año de a tandas), publicaciones e historias.
                         last_full = time.monotonic()
-                        log.info(sync_stats(session, ws.id, client, ig_id).summary())
-                    else:
-                        sync_stories(session, ws.id, client, ig_id, StatsResult())
+                        result = sync_stats(
+                            session,
+                            ws.id,
+                            client,
+                            ig_id,
+                            include_stories=False,
+                            budget_left=budget.remaining,
+                        )
+                        log.info(result.summary())
             except Exception:  # noqa: BLE001 - nunca debe tirar la app
                 log.exception("Falló la lectura de historias de Instagram")
             time.sleep(max(15, settings.instagram_stories_minutes) * 60)

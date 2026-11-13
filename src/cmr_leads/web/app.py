@@ -1138,7 +1138,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stats_msg = ""
             try:
                 stats_msg = sync_stats(
-                    session, ws.id, client, settings.instagram_business_account_id
+                    session,
+                    ws.id,
+                    client,
+                    settings.instagram_business_account_id,
+                    budget_left=budget.remaining,
                 ).summary()
             except (InstagramApiError, BudgetExceeded) as exc:
                 session.commit()  # lo que se alcanzó a traer queda guardado

@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import httpx
 import pytest
@@ -322,3 +322,34 @@ def test_instagram_page_with_filters(web):
 def test_graph_version_typos_are_fixed(raw):
     settings = Settings(_env_file=None, meta_graph_api_version=raw, meta_ads_graph_api_version=raw)
     assert settings.meta_graph_api_version == settings.meta_ads_graph_api_version == "v26.0"
+
+
+def test_instagram_calendar_page_and_ics(web):
+    from cmr_leads.db.session import get_or_create_workspace
+    from cmr_leads.instagram.stats import local_now
+
+    today = local_now().date()
+    with web.app_state.session_factory() as session:
+        ws = get_or_create_workspace(session, "cmr")
+        base = datetime(today.year, today.month, 1) - timedelta(days=60)
+        posts = []
+        for i in range(12):
+            when = base + timedelta(days=i * 4, hours=21)  # 18 h en Argentina
+            kind = ("reel", "REELS", "VIDEO") if i % 2 else ("imagen", "FEED", "IMAGE")
+            posts.append(_post(f"p{i}", kind[0], when, 400 + i * 50, kind[1], kind[2]))
+        session.add_all(posts)
+        for p in session.new:
+            p.workspace_id = ws.id
+        session.commit()
+
+    page = web.get(f"/instagram/calendario?mes={today:%Y-%m}")
+    assert page.status_code == 200
+    assert "El plan del mes" in page.text
+    assert "historias" in page.text
+    assert "—" not in page.text.split("<main")[1]
+    assert web.get("/instagram/calendario?mes=cualquiera").status_code == 200
+
+    ics = web.get(f"/instagram/calendario.ics?mes={today:%Y-%m}")
+    assert ics.status_code == 200
+    assert ics.headers["content-type"].startswith("text/calendar")
+    assert "BEGIN:VEVENT" in ics.text and "Instagram: subir" in ics.text
