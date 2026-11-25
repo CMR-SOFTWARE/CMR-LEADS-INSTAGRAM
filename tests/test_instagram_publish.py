@@ -1,45 +1,47 @@
-import io
 from datetime import datetime, timedelta
 
 import pytest
-from PIL import Image
 from sqlalchemy import select
 
 from cmr_leads.db.models import InstagramPlanItem, InstagramScheduled
 from cmr_leads.instagram.publish import (
-    PublishError,
-    publish_item,
+    CUT_MESSAGE,
     run_due,
-    store_files,
+    upload_keys,
+    valid_key,
     validate_files,
 )
 from cmr_leads.settings import Settings
 
-
-def _png() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGBA", (2000, 1000), (0, 180, 180, 255)).save(buf, "PNG")
-    return buf.getvalue()
+NOW = datetime(2026, 11, 20, 22, 0)
 
 
 class FakeStorage:
-    def __init__(self):
-        self.uploaded, self.deleted = [], []
+    def __init__(self, existing=None):
+        self.deleted, self.existing = [], existing
 
-    def upload(self, path, key):
-        assert path.exists()
-        self.uploaded.append(key)
+    def public_url(self, key):
         return f"https://storage.test/{key}"
+
+    def signed_upload(self, key):
+        return f"https://storage.test/sign/{key}?token=t"
+
+    def exists(self, key):
+        return self.existing is None or key in self.existing
 
     def delete(self, keys):
         self.deleted += keys
 
 
 class FakeGraph:
-    def __init__(self, statuses=None):
-        self.posts, self.statuses, self.n = [], list(statuses or []), 0
+    """Meta de mentira: `statuses` es lo que va respondiendo al preguntar si terminó."""
+
+    def __init__(self, statuses=None, fail_on=None):
+        self.posts, self.statuses, self.n, self.fail_on = [], list(statuses or []), 0, fail_on
 
     def post(self, path, **data):
+        if self.fail_on and self.fail_on in path:
+            raise RuntimeError("Meta se cayó")
         self.posts.append((path, data))
         self.n += 1
         return {"id": f"id{self.n}"}
@@ -60,11 +62,15 @@ def test_validate_files():
     assert validate_files("historia", []) == "Subí al menos un archivo."
 
 
-def test_store_files_converts_images_to_jpg(tmp_path):
-    names = store_files(tmp_path, [("foto.png", _png()), ("video.MP4", b"fake")])
-    assert names == ["01.jpg", "02.mp4"]
-    with Image.open(tmp_path / "01.jpg") as img:
-        assert img.format == "JPEG" and img.width == 1440
+def test_upload_keys_are_random_and_checked():
+    keys = upload_keys(["foto.png", "video.MOV"])
+    assert keys[0].endswith("/01.jpg") and keys[1].endswith("/02.mov")
+    assert keys[0].split("/")[1] == keys[1].split("/")[1]  # misma carpeta
+    assert keys[0] != upload_keys(["foto.png"])[0]  # carpeta al azar
+    assert all(valid_key(k) for k in keys)
+    assert not valid_key("p/corto/01.jpg")
+    assert not valid_key("otra/abcdefghijklmnopqrstu/01.jpg")
+    assert not valid_key("p/abcdefghijklmnopqrstu/../x.jpg")
 
 
 def _item(session, workspace, kind, files, publish_at=None):
@@ -72,78 +78,94 @@ def _item(session, workspace, kind, files, publish_at=None):
         workspace_id=workspace.id,
         kind=kind,
         caption="Hola",
-        publish_at=publish_at or datetime(2026, 11, 20, 22),
+        publish_at=publish_at or NOW - timedelta(minutes=1),
         files=files,
         status="pendiente",
     )
     session.add(item)
-    session.flush()
+    session.commit()
     return item
 
 
-def test_publish_carousel(session, workspace, tmp_path):
-    item = _item(session, workspace, "carrusel", ["01.jpg", "02.mp4"])
-    for name in item.files:
-        (tmp_path / name).write_bytes(b"x")
+def _tick(session, workspace, graph, storage, minutes=0):
+    return run_due(
+        session, workspace.id, NOW + timedelta(minutes=minutes), 30, graph, "IG", storage
+    )
+
+
+def test_carousel_is_published_in_steps(session, workspace):
+    item = _item(session, workspace, "carrusel", ["p/x/01.jpg", "p/x/02.mp4"])
     graph, storage = FakeGraph(), FakeStorage()
-    media_id, link = publish_item(item, tmp_path, graph, "IG", storage, sleep=lambda s: None)
+    assert _tick(session, workspace, graph, storage) == ["Carrusel 1: preparando"]
     children = [d for _p, d in graph.posts if d.get("is_carousel_item")]
-    assert children[0]["image_url"].endswith("01.jpg")
+    assert children[0]["image_url"].endswith("p/x/01.jpg")
     assert children[1]["media_type"] == "VIDEO"
+    assert item.status == "publicando" and item.containers["children"] == ["id1", "id2"]
+
+    _tick(session, workspace, graph, storage, 1)  # partes listas: se arma el carrusel
     carousel = next(d for _p, d in graph.posts if d.get("media_type") == "CAROUSEL")
     assert carousel["children"] == "id1,id2" and carousel["caption"] == "Hola"
+    assert item.status == "publicando"
+
+    assert _tick(session, workspace, graph, storage, 2) == ["Carrusel 1: publicada"]
     assert graph.posts[-1] == ("IG/media_publish", {"creation_id": "id3"})
-    assert media_id == "id4" and link.endswith("id4")
-    assert sorted(storage.deleted) == sorted(storage.uploaded)  # no quedan archivos públicos
+    assert (item.status, item.media_id) == ("publicada", "id4")
+    assert item.permalink.endswith("id4") and item.containers is None
+    assert storage.deleted == ["p/x/01.jpg", "p/x/02.mp4"]  # no quedan archivos públicos
 
 
-def test_publish_reel_waits_until_video_is_ready(session, workspace, tmp_path):
-    item = _item(session, workspace, "reel", ["01.mp4"])
-    (tmp_path / "01.mp4").write_bytes(b"x")
-    waits = []
+def test_reel_waits_while_meta_processes(session, workspace):
+    item = _item(session, workspace, "reel", ["p/x/01.mp4"])
     graph = FakeGraph(["IN_PROGRESS", "IN_PROGRESS", "FINISHED"])
-    publish_item(item, tmp_path, graph, "IG", FakeStorage(), sleep=waits.append)
-    assert graph.posts[0][1]["media_type"] == "REELS" and len(waits) == 2
+    _tick(session, workspace, graph, FakeStorage())
+    assert graph.posts[0][1]["media_type"] == "REELS"
+    _tick(session, workspace, graph, FakeStorage(), 1)
+    _tick(session, workspace, graph, FakeStorage(), 2)
+    assert item.status == "publicando"  # Meta sigue procesando: se espera sin bloquear
+    _tick(session, workspace, graph, FakeStorage(), 3)
+    assert item.status == "publicada"
 
 
-def test_publish_error_still_deletes_public_files(session, workspace, tmp_path):
-    item = _item(session, workspace, "imagen", ["01.jpg"])
-    (tmp_path / "01.jpg").write_bytes(b"x")
-    storage = FakeStorage()
-    with pytest.raises(PublishError):
-        publish_item(item, tmp_path, FakeGraph(["ERROR"]), "IG", storage, sleep=lambda s: None)
-    assert storage.deleted == storage.uploaded
+def test_meta_error_and_timeout(session, workspace):
+    broken = _item(session, workspace, "imagen", ["p/x/01.jpg"])
+    slow = _item(session, workspace, "reel", ["p/y/01.mp4"])
+    graph = FakeGraph(["ERROR", "IN_PROGRESS"])
+    _tick(session, workspace, graph, FakeStorage())
+    _tick(session, workspace, graph, FakeStorage(), 1)
+    assert broken.status == "error" and "no pudo procesar" in broken.error
+    graph.statuses = ["IN_PROGRESS"] * 5
+    _tick(session, workspace, graph, FakeStorage(), 25)
+    assert slow.status == "error" and "tardó demasiado" in slow.error
 
 
-def test_run_due(session, workspace):
-    now = datetime(2026, 11, 20, 22, 0)
-    on_time = _item(session, workspace, "imagen", ["01.jpg"], now - timedelta(minutes=2))
-    late = _item(session, workspace, "imagen", ["01.jpg"], now - timedelta(hours=5))
-    future = _item(session, workspace, "imagen", ["01.jpg"], now + timedelta(hours=1))
-    broken = _item(session, workspace, "reel", ["01.mp4"], now - timedelta(minutes=1))
+def test_cut_while_publishing_is_not_retried(session, workspace):
+    item = _item(session, workspace, "imagen", ["p/x/01.jpg"])
+    graph = FakeGraph(fail_on="media_publish")
+    _tick(session, workspace, graph, FakeStorage())
+    _tick(session, workspace, graph, FakeStorage(), 1)  # se cae justo al publicar
+    assert item.status == "error"
+    # Si quedó marcado "publicando" a mitad de publicar, no se reintenta solo.
+    item.status, item.containers = "publicando", {"started": NOW.isoformat(), "publishing": True}
     session.commit()
+    _tick(session, workspace, FakeGraph(), FakeStorage(), 2)
+    assert item.status == "error" and item.error == CUT_MESSAGE
 
-    def publish(item):
-        if item.kind == "reel":
-            raise PublishError("video roto")
-        return "M1", "https://instagram.com/p/M1"
 
-    run_due(session, workspace.id, now, 30, publish)
-    assert (on_time.status, on_time.media_id) == ("publicada", "M1")
-    assert late.status == "vencida"  # la compu estaba apagada: no publica sola
+def test_late_and_future_items(session, workspace):
+    late = _item(session, workspace, "imagen", ["p/x/01.jpg"], NOW - timedelta(hours=5))
+    future = _item(session, workspace, "imagen", ["p/x/01.jpg"], NOW + timedelta(hours=1))
+    _tick(session, workspace, FakeGraph(), FakeStorage())
+    assert late.status == "vencida"  # no publica sola si se pasó mucho la hora
     assert future.status == "pendiente"
-    assert broken.status == "error" and "video roto" in broken.error
-
-    run_due(session, workspace.id, now + timedelta(minutes=5), 30, publish)
-    assert on_time.attempts == 1  # no se publica dos veces
 
 
 @pytest.fixture
-def sched_web(tmp_path):
+def sched_web(tmp_path, monkeypatch):
     import shutil
 
     from fastapi.testclient import TestClient
 
+    import cmr_leads.instagram.publish as publish
     from cmr_leads.db.session import run_migrations
     from cmr_leads.web.app import create_app
 
@@ -161,12 +183,14 @@ def sched_web(tmp_path):
         website_fetch_enabled=False,
         backup_dir=tmp_path / "backups",
         meta_ads_sync_hours=0,
-        instagram_publish_dir=tmp_path / "programadas",
+        supabase_url="https://storage.test",
+        supabase_service_key="clave",
     )
+    storage = FakeStorage()
+    monkeypatch.setattr(publish, "SupabaseStorage", lambda *a, **k: storage)
     app = create_app(settings)
     with TestClient(app, base_url="http://testserver") as client:
-        client.tmp = tmp_path
-        client.app = app
+        client.tmp, client.storage = tmp_path, storage
         yield client
 
 
@@ -175,15 +199,36 @@ def test_schedule_flow(sched_web):
 
     day = local_now().date() + timedelta(days=3)
     page = sched_web.get("/instagram/programar?formato=imagen")
-    assert page.status_code == 200 and "Programar en Instagram" in page.text
+    assert page.status_code == 200 and "programar.js" in page.text
+
+    links = sched_web.post("/instagram/subidas", json={"formato": "imagen", "nombres": ["f.jpg"]})
+    assert links.status_code == 200
+    key = links.json()["archivos"][0]["key"]
+    assert valid_key(key) and "sign" in links.json()["archivos"][0]["url"]
+    bad = sched_web.post("/instagram/subidas", json={"formato": "reel", "nombres": ["f.jpg"]})
+    assert bad.status_code == 400 and "video" in bad.json()["error"]
+
+    import json
 
     r = sched_web.post(
         "/instagram/programar",
-        data={"formato": "imagen", "dia": day.isoformat(), "hora": "19:30", "texto": "Hola"},
-        files=[("files", ("foto.png", _png(), "image/png"))],
+        data={
+            "formato": "imagen",
+            "dia": day.isoformat(),
+            "hora": "19:30",
+            "texto": "Hola",
+            "archivos": json.dumps([key]),
+        },
         follow_redirects=False,
     )
     assert r.status_code == 303 and "Programado" in r.headers["location"]
+    hacked = sched_web.post(
+        "/instagram/programar",
+        data={"formato": "imagen", "dia": day.isoformat(), "hora": "19:30",
+              "archivos": json.dumps(["../../otro/archivo.jpg"])},
+        follow_redirects=False,
+    )  # fmt: skip
+    assert "Programado" not in hacked.headers["location"]
 
     from cmr_leads.db.session import make_engine, make_session_factory
 
@@ -193,7 +238,7 @@ def test_schedule_flow(sched_web):
         plan = s.get(InstagramPlanItem, item.plan_item_id)
         assert item.publish_at == datetime(day.year, day.month, day.day, 22, 30)  # 19:30 AR
         assert (plan.kind, plan.hour, plan.day.date()) == ("imagen", 19, day)
-        assert (sched_web.tmp / "programadas" / str(item.id) / "01.jpg").exists()
+        assert item.files == [key]
         item_id = item.id
 
     cal = sched_web.get(f"/instagram/calendario?mes={day:%Y-%m}")
@@ -201,8 +246,7 @@ def test_schedule_flow(sched_web):
 
     past = sched_web.post(
         "/instagram/programar",
-        data={"formato": "imagen", "dia": "2020-01-01", "hora": "10:00"},
-        files=[("files", ("foto.png", _png(), "image/png"))],
+        data={"formato": "imagen", "dia": "2020-01-01", "hora": "10:00", "archivos": "[]"},
         follow_redirects=False,
     )
     assert "pas%C3%B3" in past.headers["location"] or "pasó" in past.headers["location"]
@@ -213,4 +257,4 @@ def test_schedule_flow(sched_web):
         item = s.get(InstagramScheduled, item_id)
         assert item.status == "cancelada" and item.plan_item_id is None
         assert s.scalars(select(InstagramPlanItem)).first() is None
-    assert not (sched_web.tmp / "programadas" / str(item_id)).exists()
+    assert sched_web.storage.deleted == [key]  # se borró de Supabase

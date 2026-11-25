@@ -1,8 +1,10 @@
+import os
 import re
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +14,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///data/cmr_leads.db"
+    database_schema: str = "cmr_leads"  # schema propio en Supabase (Postgres)
+    supabase_database_url: str | None = None  # solo para mudar los datos a Supabase
+    # En la nube (Vercel): login obligatorio y tareas por llamadas programadas (pg_cron).
+    login_required: bool | None = None  # None = solo en Vercel
+    login_hashes: str | None = None  # "tomi:sha256,chipi:sha256"; vacío = se leen del gestor
+    gestor_core_url: str = "https://cmrsoftwaresolutions.com/gestion/js/core.js"
+    session_secret: str | None = None  # firma de la cookie de sesión (obligatoria en la nube)
+    cron_secret: str | None = None  # clave que manda pg_cron para correr las tareas
+    run_background: bool | None = None  # bucles en segundo plano; None = no en Vercel
     workspace: str = "cmr"
     default_country: str = "AR"
     scoring_config: Path = Path("config/scoring.yaml")
@@ -97,6 +108,31 @@ class Settings(BaseSettings):
         if not match:
             return value
         return f"v{match.group(1)}.{match.group(2) or 0}"
+
+    @model_validator(mode="after")
+    def _cloud_paths(self):
+        """En Vercel solo se puede escribir en /tmp (y se borra): lo que tiene que durar va a la
+        base o a Supabase Storage; acá van solo archivos temporales."""
+        if self.on_vercel:
+            tmp = Path(tempfile.gettempdir()) / "cmr_leads"
+            self.backup_dir = tmp / "backups"
+            self.instagram_publish_dir = tmp / "programadas"
+            self.meta_ads_reports_dir = tmp / "reportes_publicidad"
+            self.instagram_dm_state = tmp / "instagram_dms.json"
+            self.auto_search_state = tmp / "auto_search.json"
+        return self
+
+    @property
+    def on_vercel(self) -> bool:
+        return bool(os.environ.get("VERCEL"))
+
+    @property
+    def needs_login(self) -> bool:
+        return self.on_vercel if self.login_required is None else self.login_required
+
+    @property
+    def background_enabled(self) -> bool:
+        return (not self.on_vercel) if self.run_background is None else self.run_background
 
     @property
     def reply_ai_configured(self) -> bool:

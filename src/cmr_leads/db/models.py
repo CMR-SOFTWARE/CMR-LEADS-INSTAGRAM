@@ -590,5 +590,20 @@ class InstagramScheduled(Base):
     permalink: Mapped[str | None] = mapped_column(String(300))
     error: Mapped[str | None] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # Contenedores de Meta ya creados: {"children": [...], "parent": id}.
+    containers: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AppState(Base):
+    """Datos chicos de la app que antes iban a archivos JSON (en la nube no hay disco)."""
+
+    __tablename__ = "app_state"
+    __table_args__ = (UniqueConstraint("workspace_id", "key", name="uq_app_state_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"))
+    key: Mapped[str] = mapped_column(String(80))
+    value: Mapped[Any | None] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

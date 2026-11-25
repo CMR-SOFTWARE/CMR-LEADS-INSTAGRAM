@@ -1,24 +1,22 @@
 """Publicar en Instagram desde la app (Content Publishing API).
 
-Cómo funciona Meta:
-1. Cada foto o video tiene que estar en un link público: Meta lo baja desde ahí.
-   Por eso se sube primero a Supabase Storage y se borra cuando termina.
-2. Se crea un "contenedor" por archivo (y uno más para el carrusel) y se espera a que
-   Meta termine de procesarlo (los videos tardan).
-3. Se publica el contenedor y se guarda el ID para que las estadísticas lo sigan.
+Cómo funciona:
+1. El navegador sube cada foto o video directo a Supabase Storage (link público que Meta baja).
+   Las fotos se pasan a JPG antes de subir: Meta solo acepta JPG por link.
+2. A la hora indicada, una pasada del publicador crea los "contenedores" en Meta.
+3. En las pasadas siguientes (una por minuto) se revisa si Meta terminó de procesarlos
+   (los videos tardan) y, cuando están, se publica. Así ninguna llamada queda esperando.
+4. Al publicar (o cancelar) se borran los archivos de Supabase.
 
-Instagram no deja programar por API: la app publica a la hora indicada mientras está abierta.
+Instagram no deja programar por API: la app publica a la hora indicada. En la nube lo dispara
+pg_cron cada minuto; en la compu, un bucle mientras la app está abierta.
 """
 
 from __future__ import annotations
 
-import io
 import logging
 import mimetypes
 import secrets
-import shutil
-import time
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,8 +31,12 @@ log = logging.getLogger(__name__)
 KINDS = {"reel": "Reel", "carrusel": "Carrusel", "imagen": "Imagen", "historia": "Historia"}
 VIDEO_EXT = {".mp4", ".mov"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+UPLOAD_EXT = {".jpg", ".mp4", ".mov"}  # lo que llega a Supabase (las fotos ya en JPG)
 MAX_CAPTION = 2200
-STUCK_MINUTES = 20
+PROCESS_MINUTES = 20  # si Meta no terminó de procesar en este tiempo, se marca error
+MAX_FILE_BYTES = 50 * 1024 * 1024  # límite del bucket de Supabase (plan gratis)
+UPLOAD_PREFIX = "p"
+CUT_MESSAGE = "Se cortó mientras se publicaba. Fijate en Instagram si salió antes de reintentar."
 
 
 class PublishError(Exception):
@@ -43,9 +45,6 @@ class PublishError(Exception):
 
 def is_video(name: str) -> bool:
     return Path(name).suffix.lower() in VIDEO_EXT
-
-
-MAX_FILE_BYTES = 50 * 1024 * 1024  # límite del bucket de Supabase (plan gratis)
 
 
 def validate_files(kind: str, names: list[str]) -> str | None:
@@ -67,25 +66,26 @@ def validate_files(kind: str, names: list[str]) -> str | None:
     return None
 
 
-def store_files(folder: Path, uploads: list[tuple[str, bytes]]) -> list[str]:
-    """Guarda los archivos en la carpeta de la programación. Las fotos se pasan a JPG
-    (Meta solo acepta JPG por link) con el ancho máximo que usa Instagram."""
-    from PIL import Image, ImageOps
+def upload_keys(names: list[str]) -> list[str]:
+    """Dónde va cada archivo en el bucket: carpeta al azar y número de orden."""
+    folder = f"{UPLOAD_PREFIX}/{secrets.token_urlsafe(16)}"
+    keys = []
+    for n, name in enumerate(names, start=1):
+        ext = Path(name).suffix.lower() if is_video(name) else ".jpg"
+        keys.append(f"{folder}/{n:02d}{ext}")
+    return keys
 
-    folder.mkdir(parents=True, exist_ok=True)
-    names = []
-    for n, (original, raw) in enumerate(uploads, start=1):
-        if is_video(original):
-            name = f"{n:02d}{Path(original).suffix.lower()}"
-            (folder / name).write_bytes(raw)
-        else:
-            name = f"{n:02d}.jpg"
-            image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
-            if image.width > 1440:
-                image = image.resize((1440, round(image.height * 1440 / image.width)))
-            image.save(folder / name, "JPEG", quality=92)
-        names.append(name)
-    return names
+
+def valid_key(key: str) -> bool:
+    """Solo se aceptan claves con la forma que arma `upload_keys`."""
+    parts = key.split("/")
+    return (
+        len(parts) == 3
+        and parts[0] == UPLOAD_PREFIX
+        and len(parts[1]) >= 16
+        and Path(parts[2]).suffix.lower() in UPLOAD_EXT
+        and ".." not in key
+    )
 
 
 class SupabaseStorage:
@@ -96,6 +96,24 @@ class SupabaseStorage:
         self._bucket = bucket
         self._headers = {"Authorization": f"Bearer {service_key}", "apikey": service_key}
         self._http = http or httpx.Client(timeout=120)
+
+    def public_url(self, key: str) -> str:
+        return f"{self._base}/object/public/{self._bucket}/{key}"
+
+    def signed_upload(self, key: str) -> str:
+        """Link para que el navegador suba el archivo directo (sin pasar por la app)."""
+        response = self._http.post(
+            f"{self._base}/object/upload/sign/{self._bucket}/{key}", headers=self._headers
+        )
+        if response.status_code >= 300:
+            raise PublishError(f"Supabase no dio el link de subida ({response.status_code})")
+        return self._base + response.json()["url"]
+
+    def exists(self, key: str) -> bool:
+        response = self._http.get(
+            f"{self._base}/object/info/{self._bucket}/{key}", headers=self._headers
+        )
+        return response.status_code == 200
 
     def upload(self, path: Path, key: str) -> str:
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -109,7 +127,7 @@ class SupabaseStorage:
                 f"No se pudo subir el archivo a Supabase ({response.status_code}): "
                 f"{response.text[:200]}"
             )
-        return f"{self._base}/object/public/{self._bucket}/{key}"
+        return self.public_url(key)
 
     def delete(self, keys: list[str]) -> None:
         if not keys:
@@ -122,89 +140,99 @@ class SupabaseStorage:
                 headers=self._headers,
             )
         except httpx.HTTPError:
-            log.warning("No se pudieron borrar los archivos temporales de Supabase")
+            log.warning("No se pudieron borrar los archivos de Supabase")
 
 
-def _wait(client, container_id: str, sleep: Callable[[float], None], timeout: int = 600) -> None:
-    """Espera a que Meta termine de procesar el contenedor (los videos tardan)."""
-    waited = 0
-    while True:
-        status = client.get(container_id, fields="status_code,status").get("status_code")
-        if status in (None, "FINISHED", "PUBLISHED"):
-            return
-        if status in ("ERROR", "EXPIRED"):
-            detail = client.get(container_id, fields="status").get("status") or status
-            raise PublishError(f"Instagram no pudo procesar el archivo: {detail}")
-        if waited >= timeout:
-            raise PublishError("Instagram tardó demasiado en procesar el video. Probá de nuevo.")
-        sleep(5)
-        waited += 5
+def _status(client, container_id: str) -> str:
+    """FINISHED o IN_PROGRESS; si Meta dio error, lo lanza con el detalle."""
+    data = client.get(container_id, fields="status_code,status")
+    code = data.get("status_code")
+    if code in (None, "FINISHED", "PUBLISHED"):
+        return "FINISHED"
+    if code in ("ERROR", "EXPIRED"):
+        raise PublishError(f"Instagram no pudo procesar el archivo: {data.get('status') or code}")
+    return "IN_PROGRESS"
 
 
-def publish_item(
-    item: InstagramScheduled,
-    folder: Path,
-    client,
-    ig_id: str,
-    storage: SupabaseStorage,
-    sleep: Callable[[float], None] = time.sleep,
-) -> tuple[str, str | None]:
-    """Sube los archivos, crea los contenedores y publica. Devuelve (media_id, permalink)."""
-    prefix = f"{item.id}-{secrets.token_urlsafe(12)}"
-    keys = []
+def start_item(
+    item: InstagramScheduled, client, ig_id: str, storage: SupabaseStorage, now: datetime
+) -> dict:
+    """Paso 1: crea los contenedores en Meta (no espera a que los procese)."""
+    caption = (item.caption or "")[:MAX_CAPTION]
+    keys = list(item.files or [])
+    if not keys:
+        raise PublishError("La publicación no tiene archivos.")
+
+    def media(key: str) -> dict:
+        url = storage.public_url(key)
+        return {"video_url": url} if is_video(key) else {"image_url": url}
+
+    state: dict = {"started": now.isoformat(), "children": [], "parent": None}
+    if item.kind == "carrusel":
+        for key in keys:
+            fields = media(key)
+            if is_video(key):
+                fields["media_type"] = "VIDEO"
+            child = client.post(f"{ig_id}/media", is_carousel_item="true", **fields)["id"]
+            state["children"].append(child)
+    elif item.kind == "reel":
+        state["parent"] = client.post(
+            f"{ig_id}/media",
+            media_type="REELS",
+            video_url=storage.public_url(keys[0]),
+            caption=caption,
+            share_to_feed="true",
+        )["id"]
+    elif item.kind == "historia":
+        state["parent"] = client.post(f"{ig_id}/media", media_type="STORIES", **media(keys[0]))[
+            "id"
+        ]
+    else:
+        state["parent"] = client.post(
+            f"{ig_id}/media", image_url=storage.public_url(keys[0]), caption=caption
+        )["id"]
+    return state
+
+
+def _fail(item: InstagramScheduled, message: str) -> None:
+    item.status = "error"
+    item.error = message[:500]
+    item.containers = None
+
+
+def _advance(
+    session: Session, item: InstagramScheduled, now: datetime, client, ig_id: str
+) -> str | None:
+    """Paso 2: si Meta terminó de procesar, publica. Devuelve "publicada" o None (sigue)."""
+    state = dict(item.containers or {})
+    started = datetime.fromisoformat(state["started"])
+    if now - started > timedelta(minutes=PROCESS_MINUTES):
+        raise PublishError("Instagram tardó demasiado en procesar el archivo. Probá de nuevo.")
+    if state.get("parent") is None:  # carrusel: primero tienen que estar todas las partes
+        if any(_status(client, child) != "FINISHED" for child in state["children"]):
+            return None
+        state["parent"] = client.post(
+            f"{ig_id}/media",
+            media_type="CAROUSEL",
+            children=",".join(state["children"]),
+            caption=(item.caption or "")[:MAX_CAPTION],
+        )["id"]
+        item.containers = state
+        session.commit()
+        return None
+    if _status(client, state["parent"]) != "FINISHED":
+        return None
+    item.containers = {**state, "publishing": True}
+    session.commit()  # antes de publicar: si se corta justo acá, no se publica dos veces
+    media_id = client.post(f"{ig_id}/media_publish", creation_id=state["parent"])["id"]
     try:
-        urls = []
-        for name in item.files or []:
-            key = f"{prefix}/{name}"
-            urls.append((name, storage.upload(folder / name, key)))
-            keys.append(key)
-        caption = (item.caption or "")[:MAX_CAPTION]
-
-        def media_fields(name: str, url: str) -> dict:
-            return {"video_url": url} if is_video(name) else {"image_url": url}
-
-        if item.kind == "carrusel":
-            children = []
-            for name, url in urls:
-                fields = media_fields(name, url)
-                if is_video(name):
-                    fields["media_type"] = "VIDEO"
-                child = client.post(f"{ig_id}/media", is_carousel_item="true", **fields)["id"]
-                _wait(client, child, sleep)
-                children.append(child)
-            container = client.post(
-                f"{ig_id}/media",
-                media_type="CAROUSEL",
-                children=",".join(children),
-                caption=caption,
-            )["id"]
-        elif item.kind == "reel":
-            name, url = urls[0]
-            container = client.post(
-                f"{ig_id}/media", media_type="REELS", video_url=url, caption=caption,
-                share_to_feed="true",
-            )["id"]  # fmt: skip
-        elif item.kind == "historia":
-            name, url = urls[0]
-            container = client.post(
-                f"{ig_id}/media", media_type="STORIES", **media_fields(name, url)
-            )["id"]
-        else:
-            name, url = urls[0]
-            container = client.post(f"{ig_id}/media", image_url=url, caption=caption)["id"]
-        _wait(client, container, sleep)
-        media_id = client.post(f"{ig_id}/media_publish", creation_id=container)["id"]
-        try:
-            permalink = client.get(media_id, fields="permalink").get("permalink")
-        except Exception:  # el link es solo para mostrarlo; la publicación ya salió
-            permalink = None
-        return media_id, permalink
-    finally:
-        storage.delete(keys)
-
-
-def folder_for(base: Path, item: InstagramScheduled) -> Path:
-    return base / str(item.id)
+        permalink = client.get(media_id, fields="permalink").get("permalink")
+    except Exception:  # noqa: BLE001 - el link es solo para mostrarlo; ya salió
+        permalink = None
+    item.status, item.media_id, item.permalink = "publicada", media_id, permalink
+    item.published_at, item.error, item.containers = utcnow(), None, None
+    session.commit()
+    return "publicada"
 
 
 def run_due(
@@ -212,26 +240,45 @@ def run_due(
     workspace_id: int,
     now: datetime,
     grace_minutes: int,
-    publish: Callable[[InstagramScheduled], tuple[str, str | None]],
+    client,
+    ig_id: str,
+    storage: SupabaseStorage,
 ) -> list[str]:
-    """Publica lo que ya tocaba. Si se pasó mucho la hora (compu apagada), no publica: pregunta.
+    """Una pasada: publica lo que Meta terminó de procesar y prepara lo que ya toca.
 
+    Si se pasó mucho la hora sin que nadie la disparara, no publica: queda "vencida" y pregunta.
     Devuelve un resumen de lo que hizo. `now` en UTC.
     """
     done = []
-    stuck = session.scalars(
-        select(InstagramScheduled).where(
-            InstagramScheduled.workspace_id == workspace_id,
-            InstagramScheduled.status == "publicando",
+    in_progress = list(
+        session.scalars(
+            select(InstagramScheduled).where(
+                InstagramScheduled.workspace_id == workspace_id,
+                InstagramScheduled.status == "publicando",
+            )
         )
     )
-    for item in stuck:  # se cortó la app a mitad de publicación
-        if item.publish_at < now - timedelta(minutes=STUCK_MINUTES):
-            item.status = "error"
-            item.error = (
-                "Se cortó mientras se publicaba. Fijate en Instagram si salió antes de reintentar."
-            )
-    session.commit()
+    for item in in_progress:
+        name = f"{KINDS.get(item.kind, item.kind)} {item.id}"
+        state = item.containers or {}
+        if not state.get("started") or state.get("publishing"):
+            # Se cortó justo al publicar: no se reintenta solo, para no publicar dos veces.
+            _fail(item, CUT_MESSAGE)
+            session.commit()
+            done.append(f"{name}: error")
+            continue
+        try:
+            result = _advance(session, item, now, client, ig_id)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("No se pudo publicar la programación %s", item.id)
+            session.rollback()
+            _fail(item, str(exc) or exc.__class__.__name__)
+            session.commit()
+            done.append(f"{name}: error")
+            continue
+        if result:
+            storage.delete(list(item.files or []))
+            done.append(f"{name}: publicada")
 
     due = list(
         session.scalars(
@@ -245,39 +292,35 @@ def run_due(
         )
     )
     for item in due:
+        name = f"{KINDS.get(item.kind, item.kind)} {item.id}"
         if item.publish_at < now - timedelta(minutes=grace_minutes):
             item.status = "vencida"
-            item.error = "La app estaba cerrada a la hora programada. Elegí si publicarla ahora."
+            item.error = "No se publicó a la hora programada. Elegí si publicarla ahora."
             session.commit()
-            done.append(f"{KINDS[item.kind]} {item.id}: vencida")
+            done.append(f"{name}: vencida")
+            continue
+        item.attempts += 1
+        try:
+            item.containers = start_item(item, client, ig_id, storage, now)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("No se pudo preparar la programación %s", item.id)
+            _fail(item, str(exc) or exc.__class__.__name__)
+            session.commit()
+            done.append(f"{name}: error")
             continue
         item.status = "publicando"
-        item.attempts += 1
-        session.commit()  # antes de llamar a Meta: así no se publica dos veces
-        try:
-            media_id, permalink = publish(item)
-        except Exception as exc:
-            log.exception("No se pudo publicar la programación %s", item.id)
-            item.status = "error"
-            item.error = str(exc)[:500] or exc.__class__.__name__
-            session.commit()
-            done.append(f"{KINDS[item.kind]} {item.id}: error")
-            continue
-        item.status = "publicada"
-        item.media_id = media_id
-        item.permalink = permalink
-        item.published_at = utcnow()
-        item.error = None
         session.commit()
-        done.append(f"{KINDS[item.kind]} {item.id}: publicada")
+        done.append(f"{name}: preparando")
     return done
 
 
-def cancel(session: Session, item: InstagramScheduled, base: Path) -> None:
+def cancel(session: Session, item: InstagramScheduled, storage: SupabaseStorage | None) -> None:
     item.status = "cancelada"
+    item.containers = None
     if item.plan_item_id:
         plan = session.get(InstagramPlanItem, item.plan_item_id)
         if plan is not None:
             session.delete(plan)
         item.plan_item_id = None
-    shutil.rmtree(folder_for(base, item), ignore_errors=True)
+    if storage is not None:
+        storage.delete(list(item.files or []))

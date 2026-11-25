@@ -622,6 +622,10 @@ def test_ads_report_generation_and_pdf_download(web):
     pdf = web.get(f"/publicidad/reportes/{month}/pdf")
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
+    for old in web.app.state.settings.meta_ads_reports_dir.glob("*.pdf"):
+        old.unlink()  # como en la nube, donde /tmp se borra
+    again = web.get(f"/publicidad/reportes/{month}/pdf")
+    assert again.content.startswith(b"%PDF")
     assert month in web.get("/publicidad/reportes").text
     missing = web.get("/publicidad/reportes/2001-01")
     assert "todavía no existe" in unquote_plus(str(missing.url))

@@ -56,7 +56,7 @@ console = Console()
 @contextmanager
 def workspace_session() -> Iterator[tuple[Session, Workspace]]:
     settings = get_settings()
-    factory = make_session_factory(make_engine(settings.database_url))
+    factory = make_session_factory(make_engine(settings.database_url, settings.database_schema))
     with factory() as session:
         workspace = get_or_create_workspace(session, settings.workspace)
         try:
@@ -97,7 +97,7 @@ def _ingest_all(source, label: str) -> None:
 def init() -> None:
     """Crea/actualiza la base de datos (migraciones) y el workspace."""
     settings = get_settings()
-    run_migrations(settings.database_url)
+    run_migrations(settings.database_url, settings.database_schema)
     with workspace_session() as (_, workspace):
         console.print(
             f"[green]Base lista[/green] ({settings.database_url}) — workspace '{workspace.slug}'."
@@ -642,7 +642,7 @@ def web(
     import uvicorn
 
     settings = get_settings()
-    run_migrations(settings.database_url)
+    run_migrations(settings.database_url, settings.database_schema)
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     console.print(f"Panel en [bold]{url}[/bold]  (Ctrl+C para cerrar)")
     if open_browser:

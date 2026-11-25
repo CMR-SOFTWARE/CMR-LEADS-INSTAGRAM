@@ -508,9 +508,17 @@ def register_ads_routes(
     def ads_report_pdf(mes: str):
         with db() as (session, ws):
             report = _report(session, ws.id, mes)
-            path = Path(report.pdf_path) if report and report.pdf_path else None
-        if path is None or not path.exists():
-            return back("/publicidad/reportes", "No encontré el PDF. Generá el reporte de nuevo.")
+            if report is None or not report.data:
+                return back("/publicidad/reportes", "No encontré el reporte. Generalo de nuevo.")
+            path = Path(report.pdf_path) if report.pdf_path else None
+            if path is None or not path.exists():
+                # En la nube los archivos temporales se borran: se rearma con los datos guardados.
+                from cmr_leads.ads.pdf import render_report_pdf
+
+                path = settings.meta_ads_reports_dir / f"reporte-publicidad-{report.month}.pdf"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                render_report_pdf(normalize_report_data(report.data), path, settings.company_name)
+                report.pdf_path = str(path)
         return FileResponse(path, media_type="application/pdf", filename=path.name)
 
     # ---------------- Checklist de configuración ----------------
@@ -550,21 +558,27 @@ def register_ads_routes(
         return back("/publicidad/configuracion", f"{title}: {CHECKLIST_STATUSES[status]}")
 
     # ---------------- Sincronización automática ----------------
+    def ads_tick() -> str:
+        """Sincroniza la publicidad si ya pasaron las horas configuradas."""
+        with db() as (session, ws):
+            account = get_account(session, ws.id, settings)
+            last = account.last_synced_at if account else None
+            due = last is None or utcnow() - last >= timedelta(hours=settings.meta_ads_sync_hours)
+            if not due:
+                return "Publicidad: todavía no toca"
+            text = run_ads_sync(session, ws.id, settings)
+            live_cache.clear()
+            log.info(text)
+            return text
+
     def ads_loop() -> None:
-        """Mientras la app está abierta, sincroniza cada X horas (y al abrir)."""
+        """Con la app en la compu: revisa cada media hora si ya toca sincronizar."""
         while True:
             try:
-                with db() as (session, ws):
-                    account = get_account(session, ws.id, settings)
-                    last = account.last_synced_at if account else None
-                    due = last is None or utcnow() - last >= timedelta(
-                        hours=settings.meta_ads_sync_hours
-                    )
-                    if due:
-                        log.info(run_ads_sync(session, ws.id, settings))
-                        live_cache.clear()
+                ads_tick()
             except Exception:  # noqa: BLE001 - nunca debe tirar la app
                 log.exception("Falló la sincronización automática de publicidad")
-            time.sleep(30 * 60)  # revisa cada media hora si ya toca
+            time.sleep(30 * 60)
 
+    app.state.ads_tick = ads_tick
     app.state.ads_loop = ads_loop

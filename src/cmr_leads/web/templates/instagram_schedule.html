@@ -15,14 +15,13 @@
 
 {% if not configured %}
 <div class="notice">
-  Todavía no se puede publicar: falta configurar Supabase Storage (SUPABASE_URL y SUPABASE_SERVICE_KEY en el .env) y el permiso <b>instagram_content_publish</b> en el token de Meta.
-  Podés programar igual: se publica cuando esté todo listo y la hora no haya pasado.
+  Todavía no se puede publicar: falta configurar Supabase Storage (SUPABASE_URL y SUPABASE_SERVICE_KEY) y el permiso <b>instagram_content_publish</b> en el token de Meta.
 </div>
 {% endif %}
 
 {% if overdue %}
 <div class="notice">
-  {{ overdue }} publicación{{ "es" if overdue != 1 }} no salió{{ "eron" if overdue != 1 }} porque la app estaba cerrada a la hora programada. Elegí abajo si publicar ahora o cambiar la hora.
+  {{ overdue }} publicación{{ "es" if overdue != 1 }} no salió{{ "eron" if overdue != 1 }} a la hora programada. Elegí abajo si publicar ahora o cambiar la hora.
 </div>
 {% endif %}
 
@@ -39,7 +38,8 @@
         </select>
       </div>
     </form>
-    <form method="post" action="/instagram/programar" enctype="multipart/form-data">
+    <form method="post" action="/instagram/programar" id="form-programar" data-formato="{{ form.formato }}">
+      <input type="hidden" name="archivos" id="archivos-subidos" value="">
       <input type="hidden" name="formato" value="{{ form.formato }}">
       <input type="hidden" name="origen" value="{{ form.origen or '' }}">
       <input type="hidden" name="id" value="{{ form.id or '' }}">
@@ -56,7 +56,7 @@
       {% if form.suggested %}<p class="muted small" style="margin-top:-6px">{{ form.suggested }}</p>{% endif %}
       <div class="field">
         <label for="archivos">{{ hint[form.formato] }}</label>
-        <input type="file" id="archivos" name="files" required {{ "multiple" if form.formato == "carrusel" }}
+        <input type="file" id="archivos" required {{ "multiple" if form.formato == "carrusel" }}
           accept="{{ accept[form.formato] }}">
       </div>
       {% if form.formato != "historia" %}
@@ -65,7 +65,10 @@
         <textarea id="texto" name="texto" rows="8" maxlength="2200" placeholder="El texto que va abajo de la publicación, con el WhatsApp y los hashtags."></textarea>
       </div>
       {% endif %}
-      <button class="btn btn-primary" data-busy="Guardando...">{{ ic("send") }} Programar</button>
+      <div class="notice" id="subida-error" role="alert" hidden></div>
+      <p class="muted small" id="subida-estado" aria-live="polite" hidden></p>
+      <progress id="subida-avance" max="100" value="0" hidden style="width:100%"></progress>
+      <button class="btn btn-primary" id="btn-programar">{{ ic("send") }} Programar</button>
     </form>
   </div>
 
@@ -110,7 +113,8 @@
     {% else %}
     <p class="muted">Todavía no programaste nada.</p>
     {% endif %}
-    <p class="muted small" style="margin-bottom:0">Instagram no deja programar desde afuera: la app publica a la hora indicada, así que tiene que estar abierta. Si estaba cerrada y pasaron más de {{ grace }} minutos, no publica sola: te pregunta.</p>
+    <p class="muted small" style="margin-bottom:0">Instagram no deja programar desde afuera: la app publica sola a la hora indicada (los videos pueden tardar unos minutos más mientras Instagram los procesa). Si por algo no salió y pasaron más de {{ grace }} minutos, no publica sola: te pregunta.</p>
   </div>
 </div>
+<script src="{{ url_for('static', path='programar.js') }}?v={{ asset_version }}" defer></script>
 {% endblock %}

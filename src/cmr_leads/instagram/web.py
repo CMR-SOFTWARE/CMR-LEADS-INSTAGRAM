@@ -469,25 +469,56 @@ def register_instagram_routes(
                 },
             )
 
+    def storage():
+        from cmr_leads.instagram.publish import SupabaseStorage
+
+        if not (settings.supabase_url and settings.supabase_service_key):
+            return None
+        return SupabaseStorage(
+            settings.supabase_url, settings.supabase_service_key, settings.supabase_bucket
+        )
+
+    @app.post("/instagram/subidas")
+    async def instagram_upload_links(request: Request):
+        """Links para que el navegador suba los archivos directo a Supabase."""
+        from cmr_leads.instagram.publish import KINDS, PublishError, upload_keys, validate_files
+
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "Pedido inválido"}, status_code=400)
+        formato = str(body.get("formato") or "")
+        names = [str(n) for n in body.get("nombres") or []][:10]
+        if formato not in KINDS:
+            return JSONResponse({"error": "Elegí un formato."}, status_code=400)
+        error = validate_files(formato, names)
+        if error:
+            return JSONResponse({"error": error}, status_code=400)
+        store = storage()
+        if store is None:
+            return JSONResponse({"error": "Falta configurar Supabase."}, status_code=400)
+        try:
+            keys = upload_keys(names)
+            links = [{"key": k, "url": store.signed_upload(k)} for k in keys]
+        except PublishError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse({"archivos": links})
+
     @app.post("/instagram/programar")
     def instagram_schedule(
-        files: list[UploadFile],
         formato: str = Form(...),
         dia: str = Form(...),
         hora: str = Form(...),
         texto: str = Form(""),
         origen: str = Form(""),
         id: str = Form(""),
+        archivos: str = Form(""),
     ):
+        import json
         from datetime import datetime
 
         from cmr_leads.db.models import InstagramPlanItem, InstagramScheduled
-        from cmr_leads.instagram.publish import (
-            KINDS,
-            MAX_FILE_BYTES,
-            store_files,
-            validate_files,
-        )
+        from cmr_leads.instagram.publish import KINDS, valid_key, validate_files
 
         if formato not in KINDS:
             return back("/instagram/programar", "Elegí un formato.")
@@ -496,14 +527,16 @@ def register_instagram_routes(
             return back(f"/instagram/programar?formato={formato}", "Revisá el día y la hora.")
         if publish_at <= local_now().replace(tzinfo=None) + timedelta(hours=3):
             return back(f"/instagram/programar?formato={formato}", "Esa hora ya pasó.")
-        uploads = [(f.filename or "archivo", f.file.read()) for f in files if f.filename]
-        error = validate_files(formato, [name for name, _raw in uploads])
-        heavy = [name for name, raw in uploads if len(raw) > MAX_FILE_BYTES]
-        if not error and heavy:
-            error = (
-                f"{heavy[0]} pesa más de 50 MB, el máximo del almacenamiento. "
-                "Exportalo más liviano (1080p alcanza para Instagram)."
-            )
+        try:
+            keys = [str(k) for k in json.loads(archivos or "[]")]
+        except ValueError:
+            keys = []
+        error = validate_files(formato, keys) if keys else "Subí al menos un archivo."
+        store = storage()
+        if not error and (store is None or not all(valid_key(k) for k in keys)):
+            error = "No se pudieron subir los archivos. Probá de nuevo."
+        if not error and not all(store.exists(k) for k in keys):
+            error = "Algún archivo no terminó de subirse. Probá de nuevo."
         if error:
             return back(f"/instagram/programar?formato={formato}", error)
         local = publish_at - timedelta(hours=3)
@@ -529,23 +562,13 @@ def register_instagram_routes(
                 kind=formato,
                 caption=texto.strip() or None,
                 publish_at=publish_at,
-                files=[],
+                files=keys,
                 status="pendiente",
             )
             session.add(item)
-            session.flush()
-            try:
-                item.files = store_files(settings.instagram_publish_dir / str(item.id), uploads)
-            except Exception:  # noqa: BLE001 - archivo roto o formato raro
-                session.rollback()
-                return back(
-                    f"/instagram/programar?formato={formato}",
-                    "No se pudo leer el archivo. Probá con otro (JPG, PNG, MP4).",
-                )
             session.commit()
         return back(
-            "/instagram/programar",
-            f"Programado para el {local:%d/%m} a las {local:%H:%M}. Dejá la app abierta a esa hora.",
+            "/instagram/programar", f"Programado para el {local:%d/%m} a las {local:%H:%M}."
         )
 
     @app.post("/instagram/programadas/{item_id}/{accion}")
@@ -565,11 +588,11 @@ def register_instagram_routes(
                 return back("/instagram/programar", "Esa publicación ya no se puede cambiar.")
             now_utc = local_now().replace(tzinfo=None) + timedelta(hours=3)
             if accion == "cancelar":
-                cancel(session, item, settings.instagram_publish_dir)
+                cancel(session, item, storage())
                 msg = "Publicación cancelada."
             elif accion == "publicar":
                 item.publish_at, item.status, item.error = now_utc, "pendiente", None
-                msg = "Se publica en el próximo minuto. Dejá la app abierta."
+                msg = "Se publica en el próximo minuto."
             elif accion == "reprogramar":
                 publish_at = parse_when(dia, hora)
                 if publish_at is None or publish_at <= now_utc:
@@ -590,42 +613,41 @@ def register_instagram_routes(
             session.commit()
         return back("/instagram/programar", msg)
 
-    def publish_loop() -> None:
-        """Cada minuto: publica lo que ya tocaba (la app tiene que estar abierta)."""
+    def publish_tick() -> list[str]:
+        """Una pasada del publicador: lo que ya toca se prepara o se publica."""
         from cmr_leads.instagram.client import GraphClient
-        from cmr_leads.instagram.publish import SupabaseStorage, folder_for, publish_item, run_due
+        from cmr_leads.instagram.publish import SupabaseStorage, run_due
 
+        if not settings.instagram_publish_configured:
+            return []
+        client = GraphClient(settings.meta_access_token, settings.meta_graph_api_version)
+        storage = SupabaseStorage(
+            settings.supabase_url, settings.supabase_service_key, settings.supabase_bucket
+        )
+        with db() as (session, ws):
+            done = run_due(
+                session,
+                ws.id,
+                local_now().replace(tzinfo=None) + timedelta(hours=3),
+                settings.instagram_publish_grace_minutes,
+                client=client,
+                ig_id=settings.instagram_business_account_id,
+                storage=storage,
+            )
+        for line in done:
+            log.info("Programadas: %s", line)
+        return done
+
+    def publish_loop() -> None:
+        """Con la app en la compu: una pasada por minuto."""
         while True:
             try:
-                if settings.instagram_publish_configured:
-                    client = GraphClient(
-                        settings.meta_access_token, settings.meta_graph_api_version
-                    )
-                    storage = SupabaseStorage(
-                        settings.supabase_url,
-                        settings.supabase_service_key,
-                        settings.supabase_bucket,
-                    )
-                    with db() as (session, ws):
-                        done = run_due(
-                            session,
-                            ws.id,
-                            local_now().replace(tzinfo=None) + timedelta(hours=3),
-                            settings.instagram_publish_grace_minutes,
-                            lambda item, client=client, storage=storage: publish_item(
-                                item,
-                                folder_for(settings.instagram_publish_dir, item),
-                                client,
-                                settings.instagram_business_account_id,
-                                storage,
-                            ),
-                        )
-                        for line in done:
-                            log.info("Programadas: %s", line)
+                publish_tick()
             except Exception:  # noqa: BLE001 - nunca debe tirar la app
                 log.exception("Falló el publicador de Instagram")
             time.sleep(60)
 
+    app.state.publish_tick = publish_tick
     app.state.publish_loop = publish_loop
 
     @app.get("/instagram/calendario", response_class=HTMLResponse)
@@ -804,55 +826,61 @@ def register_instagram_routes(
                 return back(target, f"No se pudo analizar: {exc}")
         return back(target + "#analisis", "Análisis listo")
 
-    def stories_loop() -> None:
-        """Historias: Meta solo las muestra 24 h, así que se leen seguido con la app abierta."""
+    def stories_tick(full: bool = False) -> str:
+        """Historias (se pierden a las 24 h) y, si `full`, días y publicaciones."""
         from cmr_leads.instagram.client import GraphClient
         from cmr_leads.instagram.stats import StatsResult, sync_stats, sync_stories
         from cmr_leads.instagram.sync import daily_budget_guard
         from cmr_leads.pipeline.budget import DailyBudget
 
+        if not settings.instagram_configured:
+            return "Instagram no está configurado"
+        with db() as (session, ws):
+            ig_id = settings.instagram_business_account_id
+            # Las historias primero y con su propio cupo: si se pierden no vuelven.
+            stories_budget = DailyBudget(
+                session, ws.id, "meta_stories", settings.meta_max_stories_requests_per_day
+            )
+            stories_client = GraphClient(
+                settings.meta_access_token,
+                settings.meta_graph_api_version,
+                on_request=daily_budget_guard(stories_budget),
+            )
+            sync_stories(session, ws.id, stories_client, ig_id, StatsResult())
+            session.commit()
+            if not full:
+                return "Historias al día"
+            budget = DailyBudget(
+                session, ws.id, "meta_stats", settings.meta_max_stats_requests_per_day
+            )
+            client = GraphClient(
+                settings.meta_access_token,
+                settings.meta_graph_api_version,
+                on_request=daily_budget_guard(budget),
+            )
+            # Días (completa el año de a tandas), publicaciones y seguidores.
+            result = sync_stats(
+                session, ws.id, client, ig_id, include_stories=False, budget_left=budget.remaining
+            )
+            session.commit()
+            log.info(result.summary())
+            return result.summary()
+
+    def stories_loop() -> None:
+        """Con la app en la compu: historias seguido y el resto cada X horas."""
         last_full = None
         while True:
             try:
-                with db() as (session, ws):
-                    budget = DailyBudget(
-                        session, ws.id, "meta_stats", settings.meta_max_stats_requests_per_day
-                    )
-                    client = GraphClient(
-                        settings.meta_access_token,
-                        settings.meta_graph_api_version,
-                        on_request=daily_budget_guard(budget),
-                    )
-                    ig_id = settings.instagram_business_account_id
-                    # Las historias primero y con su propio cupo: si se pierden no vuelven.
-                    stories_budget = DailyBudget(
-                        session, ws.id, "meta_stories", settings.meta_max_stories_requests_per_day
-                    )
-                    stories_client = GraphClient(
-                        settings.meta_access_token,
-                        settings.meta_graph_api_version,
-                        on_request=daily_budget_guard(stories_budget),
-                    )
-                    sync_stories(session, ws.id, stories_client, ig_id, StatsResult())
-                    session.commit()
-                    full_due = settings.instagram_stats_hours and (
-                        last_full is None
-                        or time.monotonic() - last_full >= settings.instagram_stats_hours * 3600
-                    )
-                    if full_due:
-                        # Días (completa el año de a tandas), publicaciones e historias.
-                        last_full = time.monotonic()
-                        result = sync_stats(
-                            session,
-                            ws.id,
-                            client,
-                            ig_id,
-                            include_stories=False,
-                            budget_left=budget.remaining,
-                        )
-                        log.info(result.summary())
+                full = bool(settings.instagram_stats_hours) and (
+                    last_full is None
+                    or time.monotonic() - last_full >= settings.instagram_stats_hours * 3600
+                )
+                if full:
+                    last_full = time.monotonic()
+                stories_tick(full)
             except Exception:  # noqa: BLE001 - nunca debe tirar la app
                 log.exception("Falló la lectura de historias de Instagram")
             time.sleep(max(15, settings.instagram_stories_minutes) * 60)
 
+    app.state.stories_tick = stories_tick
     app.state.stories_loop = stories_loop

@@ -9,7 +9,6 @@ JSON chico en `data/`.
 import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -67,14 +66,20 @@ def _key(query: str, area: str) -> str:
     return f"{query}|{area}"
 
 
-def load_state(path: Path) -> dict:
+def load_state(path) -> dict:
+    """`path` es un archivo JSON o un DbState (estado guardado en la base)."""
+    if hasattr(path, "load"):
+        return path.load()
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
-def save_state(path: Path, state: dict) -> None:
+def save_state(path, state: dict) -> None:
+    if hasattr(path, "save"):
+        path.save(state)
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -110,7 +115,7 @@ def run_auto_search(
     session: Session,
     workspace: Workspace,
     client,
-    state_path: Path,
+    state_path,
     today: date,
     per_day: int,
     default_area: str,

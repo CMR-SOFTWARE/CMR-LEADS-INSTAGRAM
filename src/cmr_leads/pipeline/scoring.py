@@ -92,7 +92,18 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return merged
 
 
-def read_overrides(path: Path) -> dict:
+# Dónde viven los ajustes del panel: por defecto un YAML al lado de scoring.yaml; la app los
+# guarda en la base (en la nube no se puede escribir en disco). Ver `use_overrides_store`.
+_store: dict = {}
+
+
+def use_overrides_store(get, put) -> None:
+    """La app registra cómo leer y guardar los ajustes (en la base)."""
+    _store.update(get=get, put=put)
+    load_scoring_config.cache_clear()
+
+
+def read_file_overrides(path: Path) -> dict:
     local = local_overrides_path(path)
     if not local.exists():
         return {}
@@ -100,7 +111,17 @@ def read_overrides(path: Path) -> dict:
         return yaml.safe_load(fh) or {}
 
 
+def read_overrides(path: Path) -> dict:
+    if _store:
+        return _store["get"]() or {}
+    return read_file_overrides(path)
+
+
 def save_overrides(path: Path, overrides: dict) -> None:
+    if _store:
+        _store["put"](overrides)
+        load_scoring_config.cache_clear()
+        return
     with open(local_overrides_path(path), "w", encoding="utf-8") as fh:
         fh.write("# Generado por el panel de CMR Lead Finder. Se aplica sobre scoring.yaml.\n")
         yaml.safe_dump(overrides, fh, allow_unicode=True, sort_keys=True)
@@ -108,10 +129,25 @@ def save_overrides(path: Path, overrides: dict) -> None:
 
 
 @lru_cache
-def load_scoring_config(path: Path) -> ScoringConfig:
+def _base_config(path: Path) -> dict:
     with open(path, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
-    return ScoringConfig.model_validate(_deep_merge(data, read_overrides(path)))
+        return yaml.safe_load(fh) or {}
+
+
+@lru_cache
+def _cached_config(path: Path) -> ScoringConfig:
+    return ScoringConfig.model_validate(_deep_merge(_base_config(path), read_overrides(path)))
+
+
+def load_scoring_config(path: Path) -> ScoringConfig:
+    """scoring.yaml + los ajustes del panel. Con los ajustes en la base se leen siempre frescos
+    (en la nube puede haber varias copias de la app y otra pudo cambiarlos)."""
+    if _store:
+        return ScoringConfig.model_validate(_deep_merge(_base_config(path), read_overrides(path)))
+    return _cached_config(path)
+
+
+load_scoring_config.cache_clear = _cached_config.cache_clear  # type: ignore[attr-defined]
 
 
 def get_weight(config: ScoringConfig, rule: str) -> int:

@@ -37,6 +37,9 @@
       <div class="nav-group">Cargar</div>
       <a href="/importar" class="{{ 'active' if active in ('import',) }}" {{ 'aria-current="page"'|safe if active in ('import',) }}><span class="icon">{{ ic("download") }}</span><span class="label">Importar</span></a>
     </nav>
+    {% if request and request.state.user is defined %}
+    <div class="nav nav-salir"><a href="/logout"><span class="icon">{{ ic("log-out") }}</span><span class="label">Salir ({{ request.state.user|capitalize }})</span></a></div>
+    {% endif %}
     <div class="sidebar-footer">Los mensajes siempre los manda una persona del equipo.</div>
   </aside>
   <main class="main" id="contenido">

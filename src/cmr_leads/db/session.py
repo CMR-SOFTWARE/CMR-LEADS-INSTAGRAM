@@ -8,7 +8,33 @@ from cmr_leads.db.models import Workspace
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
-def make_engine(database_url: str) -> Engine:
+DEFAULT_SCHEMA = "cmr_leads"
+
+
+def normalize_url(database_url: str) -> str:
+    """Supabase da "postgresql://..." o "postgres://...": se usa el driver psycopg 3."""
+    for prefix in ("postgres://", "postgresql://"):
+        if database_url.startswith(prefix):
+            return "postgresql+psycopg://" + database_url[len(prefix) :]
+    return database_url
+
+
+def make_engine(database_url: str, schema: str = DEFAULT_SCHEMA) -> Engine:
+    database_url = normalize_url(database_url)
+    if database_url.startswith("postgresql"):
+        # Schema propio dentro del proyecto de Supabase (separado de la Landing y de Nexo).
+        # prepare_threshold=None: el pooler de Supabase (modo transacción) no admite prepared
+        # statements. En la nube cada llamada abre y cierra su conexión (NullPool).
+        import os
+
+        from sqlalchemy.pool import NullPool
+
+        kwargs = {"poolclass": NullPool} if os.environ.get("VERCEL") else {"pool_pre_ping": True}
+        return create_engine(
+            database_url,
+            connect_args={"options": f"-c search_path={schema}", "prepare_threshold": None},
+            **kwargs,
+        )
     if database_url.startswith("sqlite:///") and ":memory:" not in database_url:
         Path(database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
     is_sqlite = database_url.startswith("sqlite")
@@ -32,13 +58,14 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
-def run_migrations(database_url: str) -> None:
+def run_migrations(database_url: str, schema: str = DEFAULT_SCHEMA) -> None:
     from alembic import command
     from alembic.config import Config
 
     cfg = Config()
     cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
-    cfg.set_main_option("sqlalchemy.url", database_url)
+    cfg.set_main_option("sqlalchemy.url", normalize_url(database_url).replace("%", "%%"))
+    cfg.set_main_option("db_schema", schema)
     command.upgrade(cfg, "head")
 
 

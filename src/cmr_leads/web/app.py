@@ -7,6 +7,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -37,7 +38,6 @@ from cmr_leads.pipeline.scoring import (
     apply_score,
     get_weight,
     load_scoring_config,
-    local_overrides_path,
     read_overrides,
     save_overrides,
 )
@@ -235,6 +235,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logging.getLogger(__name__).exception("No se pudo hacer el backup diario")
         import threading
 
+        if not settings.background_enabled:  # en la nube las tareas las dispara pg_cron
+            yield
+            return
         if settings.auto_search_enabled and settings.google_places_configured:
             threading.Thread(target=app.state.auto_search, name="auto-search", daemon=True).start()
         if settings.instagram_dm_check_minutes and settings.facebook_page_id:
@@ -253,7 +256,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CMR Lead Finder", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.settings = settings
-    app.state.session_factory = make_session_factory(make_engine(settings.database_url))
+    app.state.session_factory = make_session_factory(
+        make_engine(settings.database_url, settings.database_schema)
+    )
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
     templates = Jinja2Templates(directory=WEB_DIR / "templates")
@@ -286,6 +291,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def scoring_path() -> Path:
         return settings.scoring_config
 
+    # Sesión del pedido en curso: los ajustes de puntaje se leen y guardan en ella
+    # (otra sesión aparte chocaría con el bloqueo de SQLite y no vería lo no confirmado).
+    current_db: ContextVar[tuple[Session, Workspace] | None] = ContextVar(
+        "current_db", default=None
+    )
+
+    def _get_overrides() -> dict:
+        from cmr_leads.db.state import DbState
+        from cmr_leads.pipeline.scoring import read_file_overrides
+
+        value = None
+        current = current_db.get()
+        if current is not None:
+            value = DbState(current[0], current[1].id, "scoring_overrides").load()
+        else:  # fuera de un pedido: solo lee, no crea nada
+            with app.state.session_factory() as session:
+                ws_id = session.scalar(
+                    select(Workspace.id).where(Workspace.slug == settings.workspace)
+                )
+                if ws_id is not None:
+                    value = DbState(session, ws_id, "scoring_overrides").load()
+        return value or read_file_overrides(scoring_path())  # el YAML viejo, si había
+
+    def _put_overrides(overrides: dict) -> None:
+        from cmr_leads.db.state import DbState
+
+        current = current_db.get()
+        if current is not None:
+            DbState(current[0], current[1].id, "scoring_overrides").save(overrides)
+            return  # se confirma junto con el resto del pedido
+        with app.state.session_factory() as session:
+            ws = get_or_create_workspace(session, settings.workspace)
+            DbState(session, ws.id, "scoring_overrides").save(overrides)
+            session.commit()
+
+    from cmr_leads.pipeline.scoring import use_overrides_store
+
+    use_overrides_store(_get_overrides, _put_overrides)
+
     def scoring_config():
         return load_scoring_config(scoring_path())
 
@@ -307,12 +351,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         factory: sessionmaker[Session] = app.state.session_factory
         with factory() as session:
             workspace = get_or_create_workspace(session, settings.workspace)
+            token = current_db.set((session, workspace))
             try:
                 yield session, workspace
                 session.commit()
             except Exception:
                 session.rollback()
                 raise
+            finally:
+                current_db.reset(token)
 
     def render(request: Request, name: str, **context) -> HTMLResponse:
         context.setdefault("msg", request.query_params.get("msg"))
@@ -329,6 +376,68 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if value and value.startswith("/") and not value.startswith("//"):
             return value
         return default
+
+    # ---------------- Login (mismos usuarios del gestor de CMR) ----------------
+    from cmr_leads.web import auth
+
+    if settings.needs_login and not settings.session_secret:
+        raise RuntimeError("Falta SESSION_SECRET: sin eso no se puede firmar la sesión")
+
+    @app.middleware("http")
+    async def require_login(request: Request, call_next):
+        if settings.needs_login and not auth.is_public(request.url.path):
+            user = auth.read_cookie(settings.session_secret, request.cookies.get(auth.COOKIE))
+            if user is None:
+                if request.method != "GET":
+                    return Response("Sesión vencida: volvé a ingresar.", status_code=401)
+                target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+                return RedirectResponse(f"/login?{urlencode({'siguiente': target})}", 303)
+            request.state.user = user
+        return await call_next(request)
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_page(request: Request, siguiente: str = "/"):
+        return templates.TemplateResponse(
+            request, "login.html", {"error": None, "next_url": safe_next(siguiente, "/")}
+        )
+
+    @app.post("/login")
+    def login(
+        request: Request,
+        usuario: str = Form(""),
+        clave: str = Form(""),
+        siguiente: str = Form("/"),
+    ):
+        hashes = auth.load_hashes(settings.login_hashes, settings.gestor_core_url)
+        user = auth.check_password(hashes, usuario, clave)
+        if user is None or not settings.session_secret:
+            error = (
+                "Usuario o contraseña incorrectos."
+                if hashes
+                else "No pude leer los usuarios del gestor. Probá de nuevo en un rato."
+            )
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {"error": error, "next_url": safe_next(siguiente, "/")},
+                status_code=401,
+            )
+        response = RedirectResponse(safe_next(siguiente, "/"), status_code=303)
+        response.set_cookie(
+            auth.COOKIE,
+            auth.make_cookie(settings.session_secret, user),
+            max_age=auth.MAX_AGE,
+            httponly=True,
+            secure=settings.on_vercel,
+            samesite="lax",
+        )
+        return response
+
+    @app.get("/logout")
+    def logout():
+        response = RedirectResponse("/login", status_code=303)
+        response.delete_cookie(auth.COOKIE)
+        return response
 
     def rescore_all(session: Session, workspace: Workspace) -> int:
         config = scoring_config()
@@ -364,9 +473,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 or 0,
             }
             top = list(session.scalars(leads_query(ws.id, status=LeadStatus.NEW).limit(6)))
+            from cmr_leads.db.state import DbState
             from cmr_leads.pipeline.auto_search import load_state
 
-            auto = load_state(settings.auto_search_state).get("last_result")
+            auto = load_state(
+                DbState(session, ws.id, "auto_search", settings.auto_search_state)
+            ).get("last_result")
             follow_ups = follow_ups_due(session, ws.id)
             from cmr_leads.sales.briefing import build_briefing
             from cmr_leads.sales.repository import SqlSalesRepository
@@ -623,7 +735,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def check_instagram_dms(session: Session, ws: Workspace) -> str:
         """Lee solo los DMs nuevos de Instagram y los pasa al piloto. Devuelve un resumen."""
-        import json
 
         from cmr_leads.enrichment.instagram_discovery import InstagramApiError
         from cmr_leads.instagram.client import GraphClient
@@ -638,11 +749,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if not (settings.instagram_configured and settings.facebook_page_id):
             return "Falta configurar FACEBOOK_PAGE_ID y la API de Instagram en .env"
-        state_path = settings.instagram_dm_state
-        try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            state = {}
+        from cmr_leads.db.state import DbState
+
+        store = DbState(session, ws.id, "instagram_dms", settings.instagram_dm_state)
+        state = store.load()
         budget = DailyBudget(session, ws.id, "meta_stats", settings.meta_max_stats_requests_per_day)
         client = GraphClient(
             settings.meta_access_token,
@@ -668,15 +778,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except (InstagramApiError, BudgetExceeded) as exc:
             return f"No pude leer los mensajes de Instagram: {exc}"
+        store.save({"last_check": started, "username": own})
         session.commit()
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-        state_path.write_text(
-            json.dumps({"last_check": started, "username": own}), encoding="utf-8"
-        )
         return (
             f"Instagram: {result.replies} respuestas nuevas, {result.new_leads} negocios nuevos "
             f"que te escribieron ({result.conversations} chats con novedades)"
         )
+
+    def dm_tick() -> str:
+        """Revisa DMs nuevos de Instagram y corre el piloto de ventas."""
+        with db() as (session, ws):
+            text = check_instagram_dms(session, ws)
+            run_pilot(session, ws)
+        return text
 
     def dm_loop() -> None:
         """Mientras la app está abierta, revisa los DMs cada X minutos."""
@@ -685,13 +799,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         while True:
             try:
-                with db() as (session, ws):
-                    check_instagram_dms(session, ws)
-                    run_pilot(session, ws)
+                dm_tick()
             except Exception:  # noqa: BLE001 - nunca debe tirar la app
                 logging.getLogger(__name__).exception("Falló la revisión de DMs de Instagram")
             time.sleep(max(5, settings.instagram_dm_check_minutes) * 60)
 
+    app.state.dm_tick = dm_tick
     app.state.dm_loop = dm_loop
 
     def run_pilot(session: Session, ws: Workspace):
@@ -1228,7 +1341,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 config=config,
                 sections=sections,
                 insights=insights,
-                has_overrides=local_overrides_path(scoring_path()).exists(),
+                has_overrides=bool(read_overrides(scoring_path())),
                 duplicates=find_possible_duplicates(session, ws.id)[:10],
             )
 
@@ -1490,6 +1603,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Al abrir la app: busca unos pocos rubros/localidades nuevos y completa sus datos."""
         from datetime import date
 
+        from cmr_leads.db.state import DbState
         from cmr_leads.pipeline.auto_search import run_auto_search
         from cmr_leads.sources.google_places import GooglePlacesClient
 
@@ -1499,7 +1613,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     session,
                     ws,
                     GooglePlacesClient(settings.google_places_api_key),
-                    settings.auto_search_state,
+                    DbState(session, ws.id, "auto_search", settings.auto_search_state),
                     date.today(),
                     settings.auto_search_per_day,
                     settings.search_area,
@@ -1613,5 +1727,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_instagram_routes(app, settings, templates, db, render, back)
 
     register_ads_routes(app, settings, templates, db, render, back)
+
+    # ---------------- Tareas programadas (en la nube las dispara pg_cron) ----------------
+    def task_list() -> dict:
+        tasks = {
+            "publicar": lambda: app.state.publish_tick(),
+            "historias": lambda: app.state.stories_tick(False),
+            "estadisticas": lambda: app.state.stories_tick(True),
+            "publicidad": lambda: app.state.ads_tick(),
+        }
+        if settings.instagram_dm_check_minutes and settings.facebook_page_id:
+            tasks["mensajes"] = lambda: app.state.dm_tick()
+        if settings.auto_search_enabled and settings.google_places_configured:
+            tasks["busqueda"] = lambda: app.state.auto_search()
+        return tasks
+
+    @app.post("/tareas/{nombre}")
+    def run_task(nombre: str, request: Request):
+        """Corre una tarea. Pide la clave CRON_SECRET (Authorization: Bearer ...)."""
+        import hmac
+        import logging
+
+        given = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not settings.cron_secret or not hmac.compare_digest(given, settings.cron_secret):
+            return Response("No autorizado", status_code=401)
+        task = task_list().get(nombre)
+        if task is None:
+            return Response("Tarea desconocida o sin configurar", status_code=404)
+        try:
+            result = task()
+        except Exception as exc:  # noqa: BLE001 - se informa y pg_cron vuelve a intentar
+            logging.getLogger(__name__).exception("Falló la tarea %s", nombre)
+            return Response(f"Error: {exc.__class__.__name__}", status_code=500)
+        text = "\n".join(result) if isinstance(result, list) else str(result or "ok")
+        return Response(text or "ok", media_type="text/plain")
 
     return app

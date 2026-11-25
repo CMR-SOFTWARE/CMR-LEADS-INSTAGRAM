@@ -27,3 +27,13 @@ def workspace(session):
 @pytest.fixture
 def scoring_config():
     return load_scoring_config(ROOT / "config" / "scoring.yaml")
+
+
+@pytest.fixture(autouse=True)
+def _reset_scoring_store():
+    """Cada app registra dónde guarda los ajustes del puntaje: no debe pasar de un test a otro."""
+    from cmr_leads.pipeline import scoring
+
+    yield
+    scoring._store.clear()
+    scoring.load_scoring_config.cache_clear()
