@@ -1,8 +1,8 @@
-.venv/
-data/
-exports/
-tests/
-docs/
+/.venv
+/data
+/exports
+/tests
+/docs
 *.db
 .env
 .env.*
