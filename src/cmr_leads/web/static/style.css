@@ -128,7 +128,7 @@ h3 { font-size: 13px; font-weight: var(--peso-boton); color: var(--cmr-texto-2);
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 form.inline { display: inline; }
 
-input[type=text], input[type=search], input[type=number], input[type=email], input[type=url], select, textarea {
+input[type=text], input[type=search], input[type=number], input[type=email], input[type=url], input[type=password], select, textarea {
   width: 100%; border: 1px solid var(--border); background: var(--surface); color: var(--text);
   border-radius: 12px; padding: 9px 12px; font: var(--peso-texto) 14px var(--font);
   transition: border-color var(--dur-rapida) var(--ease);

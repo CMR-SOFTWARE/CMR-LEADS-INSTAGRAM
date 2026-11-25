@@ -25,7 +25,7 @@
     <p class="muted small" style="text-align:center">Entrá con tu usuario del gestor de CMR.</p>
     {% if error %}<div class="notice" role="alert">{{ error }}</div>{% endif %}
     <input type="hidden" name="siguiente" value="{{ next_url }}">
-    <div class="field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" autocomplete="username" placeholder="tomi, chipi o gena" required autofocus></div>
+    <div class="field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" type="text" autocomplete="username" placeholder="tomi, chipi o gena" required autofocus></div>
     <div class="field"><label for="clave">Contraseña</label><input id="clave" name="clave" type="password" autocomplete="current-password" required></div>
     <button class="btn btn-primary">Ingresar</button>
   </form>
