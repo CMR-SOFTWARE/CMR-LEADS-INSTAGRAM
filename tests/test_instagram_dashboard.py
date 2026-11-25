@@ -400,3 +400,19 @@ def test_instagram_calendar_changes_endpoint(web):
     )
     page = web.get(f"/instagram/calendario?mes={mes}")
     assert "📌" not in page.text.split("cal-grid")[1] and "No disponible" not in page.text
+
+
+def test_instagram_import_endpoint(web):
+    from tests.test_meta_export import STORIES
+
+    r = web.post(
+        "/instagram/importar",
+        files=[
+            ("files", ("historias.csv", STORIES.encode("utf-8"), "text/csv")),
+            ("files", ("otro.csv", b"nombre,telefono\nPepe,1\n", "text/csv")),
+        ],
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    location = r.headers["location"]
+    assert "historias+nuevas" in location and "otro.csv" in location

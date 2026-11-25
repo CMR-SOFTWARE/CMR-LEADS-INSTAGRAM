@@ -20,7 +20,12 @@ from cmr_leads.ads.metrics import (
     level_rows,
     pct_change,
 )
-from cmr_leads.ads.report import month_label, parse_month, previous_month
+from cmr_leads.ads.report import (
+    month_label,
+    normalize_report_data,
+    parse_month,
+    previous_month,
+)
 from cmr_leads.ads.service import (
     CHECKLIST_STATUSES,
     build_client,
@@ -474,22 +479,29 @@ def register_ads_routes(
             select(AdReport).where(AdReport.workspace_id == ws_id, AdReport.month == mes)
         )
 
+    def _generated(data: dict) -> datetime:
+        try:
+            return datetime.fromisoformat(data["generated_at"])
+        except (TypeError, ValueError):
+            return datetime(2000, 1, 1)
+
     @app.get("/publicidad/reportes/{mes}", response_class=HTMLResponse)
     def ads_report_view(request: Request, mes: str):
         with db() as (session, ws):
             report = _report(session, ws.id, mes)
             if report is None:
                 return back("/publicidad/reportes", "Ese reporte todavía no existe")
+            data = normalize_report_data(report.data)
             return render(
                 request,
                 "ads_report.html",
                 active="ads",
                 tab="reportes",
                 report=report,
-                d=report.data,
+                d=data,
                 alerts_open=open_alerts(session, ws.id),
                 configured=settings.ads_configured,
-                generated=datetime.fromisoformat(report.data["generated_at"]),
+                generated=_generated(data),
             )
 
     @app.get("/publicidad/reportes/{mes}/pdf")

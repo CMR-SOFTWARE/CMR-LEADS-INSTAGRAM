@@ -322,4 +322,45 @@ def sync_stats(
     session.commit()
     sync_days(session, workspace_id, client, ig_id, today, result, budget_left)
     session.commit()
+    sync_followers(session, workspace_id, client, ig_id, today, result)
+    session.commit()
     return result
+
+
+def sync_followers(
+    session: Session, workspace_id: int, client: GraphClient, ig_id: str, today: date, result
+) -> None:
+    """Seguidores ganados por día. Meta solo los da de los últimos 30 días y con más de 100
+    seguidores: lo anterior se completa con el CSV que exporta Meta."""
+    since, _ = _day_bounds(today - timedelta(days=29))
+    _, until = _day_bounds(today)
+    try:
+        payload = client.get(
+            f"{ig_id}/insights", metric="follower_count", period="day", since=since, until=until
+        )
+    except FATAL:
+        raise
+    except InstagramApiError as exc:
+        result.warnings.append(f"follower_count: {exc}")
+        return
+    existing = {
+        r.day.date(): r
+        for r in session.scalars(
+            select(InstagramDaily).where(InstagramDaily.workspace_id == workspace_id)
+        )
+    }
+    for item in payload.get("data", []):
+        for value in item.get("values") or []:
+            end = value.get("end_time")
+            if not end or not isinstance(value.get("value"), int | float):
+                continue
+            # end_time es el cierre del día (08:00 UTC del día siguiente).
+            day = datetime.fromisoformat(end.replace("+0000", "+00:00")).date() - timedelta(days=1)
+            row = existing.get(day)
+            if row is None:
+                row = InstagramDaily(
+                    workspace_id=workspace_id, day=datetime(day.year, day.month, day.day)
+                )
+                session.add(row)
+                existing[day] = row
+            row.follows = int(value["value"])

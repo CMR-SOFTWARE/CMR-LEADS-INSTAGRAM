@@ -14,6 +14,10 @@
   <div><h1>Instagram</h1><p>Cómo le va a la cuenta de CMR, qué formato funciona y cuándo conviene publicar.</p></div>
   <div class="head-actions">
   <a class="btn" href="/instagram/calendario">{{ ic("calendar") }} Calendario del mes</a>
+  <a class="btn" href="/instagram/programar">{{ ic("send") }} Programar</a>
+  <form method="post" action="/instagram/importar" enctype="multipart/form-data" title="Archivo CSV de Meta Business Suite (Estadísticas, Exportar datos). Podés elegir varios a la vez: historias, publicaciones y gráficos diarios.">
+    <label class="btn">{{ ic("file-down") }} Importar CSV de Meta<input type="file" name="files" accept=".csv,text/csv" multiple hidden onchange="this.form.submit()"></label>
+  </form>
   <form method="post" action="/instagram/actualizar"><button class="btn btn-primary" {{ 'disabled' if not configured }} data-busy="Actualizando...">{{ ic("refresh-cw") }} Actualizar desde Instagram</button></form>
   </div>
 </div>
@@ -77,6 +81,75 @@ FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
   {% if d.series %}<div class="chart-box">{{ charts["ig-time"] }}<canvas data-chart="ig-time" aria-label="Comparación de dos datos por {{ 'mes' if d.monthly else 'día' }}"></canvas></div>
   <p class="muted small" style="margin-bottom:0">Que dos datos suban juntos no prueba que uno cause el otro: sirve para detectar patrones, no para sacar conclusiones solas.</p>
   {% else %}<p class="muted">Sin datos en este período.</p>{% endif %}
+</div>
+
+{% set fl = d.followers %}
+<div class="card" style="margin-top:16px">
+  <div class="card-head"><h2>Seguidores</h2><span class="muted small">cuántos se suman y qué los trae</span></div>
+  {% if fl.days_measured or fl.current %}
+  <div class="kpis compact">
+    {% if fl.current %}<div class="kpi"><div class="value">{{ fl.current|num }}</div><div class="label">Seguidores hoy</div></div>{% endif %}
+    <div class="kpi"><div class="value">{{ ("+" ~ fl.gained|num) if fl.gained and fl.gained > 0 else (fl.gained|num if fl.gained is not none else "s/d") }}</div><div class="label">Ganados en el período {{ delta(changes.follows) }}</div></div>
+    {% if fl.per_100_visits is not none %}<div class="kpi"><div class="value">{{ "%.1f"|format(fl.per_100_visits)|replace(".", ",") }}</div><div class="label">Cada 100 visitas al perfil</div></div>{% endif %}
+    {% if fl.best_day %}<div class="kpi"><div class="value">{{ fl.best_day.strftime("%d/%m") }}</div><div class="label">Mejor día ({{ fl.best_day_follows }} nuevos)</div></div>{% endif %}
+  </div>
+  {% if fl.ads %}
+  <div class="notice info">Con publicidad activa se suman <b>{{ "%.1f"|format(fl.ads.with_ads)|replace(".", ",") }} seguidores por día</b> ({{ fl.ads.days_with }} días); sin publicidad, <b>{{ "%.1f"|format(fl.ads.without)|replace(".", ",") }}</b> ({{ fl.ads.days_without }} días).</div>
+  {% endif %}
+  {% if fl.months %}
+  <p class="muted small">Seguidores al cierre de cada mes</p>
+  <div class="table-wrap" style="margin-bottom:16px"><table>
+    <thead><tr><th>Mes</th><th class="num">Seguidores</th><th class="num">Ganados en el mes</th></tr></thead>
+    <tbody>
+    {% for m in fl.months|reverse %}
+    <tr>
+      <td>{{ m.name }}{% if m.current %} (hasta hoy){% endif %}</td>
+      <td class="num"><strong>{{ m.total|num if m.total is not none else "s/d" }}</strong>{% if m.total is not none and not m.real %} <span class="muted small">aprox.</span>{% endif %}</td>
+      <td class="num">{{ ("+" ~ m.gained|num) if m.gained else (m.gained|num if m.gained is not none else "s/d") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted small" style="margin-top:-8px">Meta no guarda cuántos seguidores tenías en cada fecha: solo cuántos empezaron a seguirte cada día, sin restar los que dejaron. Los meses marcados "aprox." se calculan desde el total real que guarda la app (desde el {{ fl.real_since.strftime("%d/%m/%Y") if fl.real_since else "primer día" }}), repartiendo los que dejaron de seguir en proporción. Desde ahora cada mes queda con su número real. "Ganados en el mes" es la diferencia con el cierre del mes anterior: ya descuenta a los que dejaron de seguir y no depende de los datos diarios de Meta, que llegan con 2 o 3 días de atraso.</p>
+  {% endif %}
+  {% if charts["ig-follows"] %}<div class="chart-box">{{ charts["ig-follows"] }}<canvas data-chart="ig-follows" aria-label="Seguidores ganados por {{ 'mes' if d.monthly else 'día' }} comparados con otro dato"></canvas></div>{% endif %}
+  <div class="grid grid-2">
+    <div>
+      <p class="muted small">Qué publicaciones trajeron más seguidores</p>
+      {% if fl.top %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Publicación</th><th>Formato</th><th class="num">Seguidores</th><th class="num">Vistas</th></tr></thead>
+        <tbody>
+        {% for p in fl.top %}
+        <tr>
+          <td style="max-width:260px">{% if p.permalink %}<a href="{{ p.permalink }}" target="_blank" rel="noopener">{% endif %}{{ ((p.caption or "Sin texto").split("\n")[0])[:60] }}{% if p.permalink %}</a>{% endif %}</td>
+          <td>{{ p.kind }}</td>
+          <td class="num"><strong>{{ p.follows|num }}</strong></td>
+          <td class="num">{{ (p.views or p.reach or 0)|num }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}<p class="muted">Ninguna publicación de este período trajo seguidores (o Meta todavía no lo informa).</p>{% endif %}
+    </div>
+    <div>
+      <p class="muted small">Qué formato convierte mejor: seguidores cada 1.000 vistas</p>
+      {% if fl.formats %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Formato</th><th class="num">Publicaciones</th><th class="num">Seguidores</th><th class="num">Cada 1.000 vistas</th></tr></thead>
+        <tbody>
+        {% for f in fl.formats %}
+        <tr><td>{{ f.name }}</td><td class="num">{{ f.count }}</td><td class="num">{{ f.follows|num }}</td><td class="num"><strong>{{ ("%.1f"|format(f.per_1000))|replace(".", ",") if f.per_1000 is not none else "s/d" }}</strong></td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}<p class="muted">Sin datos de seguidores por publicación en este período.</p>{% endif %}
+    </div>
+  </div>
+  <p class="muted small" style="margin-bottom:0">Meta cuenta las cuentas que empezaron a seguirte, no resta las que dejaron de seguirte. Los da por día solo de los últimos 30 días: lo anterior sale del CSV de "Seguidores" que exportás de Meta (botón Importar CSV de Meta). Por publicación, Meta cuenta solo a quien siguió la cuenta desde esa publicación; el resto llega por el perfil, búsquedas o publicidad.</p>
+  {% else %}
+  <p class="muted">Todavía no hay datos de seguidores. Tocá "Actualizar desde Instagram" o importá el CSV de "Seguidores" que exporta Meta.</p>
+  {% endif %}
 </div>
 
 <div class="grid grid-2" style="margin-top:16px">
@@ -148,7 +221,15 @@ FACEBOOK_PAGE_ID=...   (solo para leer mensajes)</pre></li>
 
 {% set st = d.stories %}
 <div class="card" style="margin-top:16px">
-  <div class="card-head"><h2>Historias</h2>{% if st.total %}<span class="chip accent">Mejor: {{ best(st.times) }}</span>{% endif %}</div>
+  <div class="card-head"><h2>Historias</h2>{% if story_plan and story_plan.times %}<span class="chip accent">Subí a las {{ story_plan.time_labels|join(" y ") }}</span>{% endif %}</div>
+  {% if story_plan and story_plan.times %}
+  <div class="notice info" style="margin-bottom:12px">
+    <b>Todos los días: {{ story_plan.count }} historias, a las {{ story_plan.time_labels|join(" y a las ") }}.</b>
+    {% for t in story_plan.times %}{{ t.time }}: franja de {{ t.slot }}{% if t.expected %}, unas {{ t.expected }} vistas por historia{% endif %}. {% endfor %}
+    {% if story_plan.source == "historias" %}Sale de tus {{ story_plan.samples }} historias guardadas, sin contar las que explotaron por una mención.{% else %}Todavía hay pocas historias guardadas: por ahora sale de lo que funciona en tus publicaciones.{% endif %}
+    <a href="/instagram/calendario">Ver en el calendario</a>
+  </div>
+  {% endif %}
   {% if st.total %}
   <div class="kpis compact">
     <div class="kpi"><div class="value">{{ st.total|num }}</div><div class="label">Historias subidas</div></div>

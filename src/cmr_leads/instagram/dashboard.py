@@ -60,6 +60,7 @@ def account_totals(rows: list[InstagramDaily]) -> dict:
         "website_clicks": _sum(rows, "website_clicks"),
         "link_taps": _sum(rows, "link_taps"),
         "interactions": _sum(rows, "total_interactions"),
+        "follows": _sum(rows, "follows"),
         "days": len(rows),
     }
 
@@ -91,8 +92,10 @@ def series(rows: list[InstagramDaily], monthly: bool) -> list[dict]:
                 "profile_views": 0,
                 "clicks": 0,
                 "interactions": 0,
+                "follows": 0,
             },
         )
+        b["follows"] += r.follows or 0
         b["interactions"] += r.total_interactions or 0
         b["views"] += r.views or 0
         b["reach"] += r.reach or 0
@@ -270,7 +273,8 @@ def build_dashboard(
     prev_until = since - timedelta(days=1)
     prev_since = prev_until - timedelta(days=length - 1)
     rows = daily_rows(session, workspace_id, since, until)
-    previous = account_totals(daily_rows(session, workspace_id, prev_since, prev_until))
+    previous_rows = daily_rows(session, workspace_id, prev_since, prev_until)
+    previous = account_totals(previous_rows)
     media = media_in(session, workspace_id, since, until)
     posts = [p for p in media if not p.is_story]
     stories = [p for p in media if p.is_story]
@@ -278,7 +282,7 @@ def build_dashboard(
     monthly = length > 62
     totals = account_totals(rows)
     tracked = stories_tracked_since(session, workspace_id) or until
-    return {
+    result = {
         "since": since,
         "until": until,
         "monthly": monthly,
@@ -290,7 +294,202 @@ def build_dashboard(
         "times": best_times(selected),
         "stories": stories_summary(stories, max(since, tracked), until),
         "stories_tracked_since": tracked,
+        "followers": followers_summary(session, workspace_id, rows, previous_rows, media),
+        "follower_history": follower_history(session, workspace_id),
         "posts": sorted(selected, key=_views, reverse=True),
         "post_count": len(posts),
         "formato": formato if formato in FORMATS else "",
     }
+    history = result["follower_history"]
+    for b in result["series"]:
+        if monthly:
+            last = min((b["day"] + timedelta(days=32)).replace(day=1) - timedelta(days=1), until)
+        else:
+            last = b["day"]
+        b["followers_total"] = value_on(history, last)
+        if monthly:
+            # Por mes, "ganados" es la diferencia entre totales: Meta informa los seguidores
+            # diarios con días de atraso (mientras tanto da 0) y no resta los que dejan de seguir.
+            before = value_on(history, max(b["day"], since) - timedelta(days=1))
+            if before is not None and b["followers_total"] is not None:
+                b["follows"] = b["followers_total"] - before
+            elif b["followers_total"] is not None:  # primer mes: no puede ganar más que el total
+                b["follows"] = min(b["follows"], b["followers_total"])
+    fl = result["followers"]
+    start_total = value_on(history, since - timedelta(days=1))
+    end_total = value_on(history, until)
+    prev_start = value_on(history, prev_since - timedelta(days=1))
+    if start_total is not None and end_total is not None:
+        fl["gained"] = end_total - start_total
+        if prev_start is not None:
+            fl["previous"] = start_total - prev_start
+    elif (
+        end_total is not None and fl["gained"] is not None
+    ):  # el período arranca antes de los datos
+        fl["gained"] = min(fl["gained"], end_total)
+    gains_by_month: dict[date, int] = defaultdict(int)
+    for r in session.scalars(
+        select(InstagramDaily).where(
+            InstagramDaily.workspace_id == workspace_id, InstagramDaily.follows.is_not(None)
+        )
+    ):
+        gains_by_month[r.day.date().replace(day=1)] += r.follows
+    result["followers"]["months"] = follower_months(history, gains_by_month, until)
+    result["followers"]["real_since"] = min(history["real"]) if history["real"] else None
+    return result
+
+
+def followers_summary(
+    session: Session, workspace_id: int, rows: list, previous_rows: list, media: list
+) -> dict:
+    """De dónde salen los seguidores: cuántos se ganan, qué publicaciones los traen y
+    qué formato convierte mejor (seguidores cada 1.000 vistas)."""
+    from cmr_leads.db.models import InstagramAccountSnapshot
+
+    snapshot = session.scalar(
+        select(InstagramAccountSnapshot)
+        .where(
+            InstagramAccountSnapshot.workspace_id == workspace_id,
+            InstagramAccountSnapshot.followers.is_not(None),
+        )
+        .order_by(InstagramAccountSnapshot.day.desc())
+    )
+    gained = _sum(rows, "follows")
+    profile = _sum(rows, "profile_views")
+    measured = [r for r in rows if r.follows is not None]
+    best_day = max(measured, key=lambda r: r.follows, default=None)
+    top = sorted((p for p in media if (p.follows or 0) > 0), key=lambda p: -(p.follows or 0))
+    formats = []
+    for key, name in FORMATS.items():
+        items = [p for p in media if format_key(p) == key and p.follows is not None]
+        if not items:
+            continue
+        follows = sum(p.follows for p in items)
+        views = sum(_views(p) for p in items)
+        formats.append(
+            {
+                "key": key,
+                "name": name,
+                "count": len(items),
+                "follows": follows,
+                "per_1000": round(follows * 1000 / views, 1) if views else None,
+            }
+        )
+    formats.sort(key=lambda f: -(f["per_1000"] or 0))
+    return {
+        "current": snapshot.followers if snapshot else None,
+        "current_day": snapshot.day.date() if snapshot else None,
+        "gained": gained,
+        "previous": _sum(previous_rows, "follows"),
+        "days_measured": len(measured),
+        "per_100_visits": round(gained * 100 / profile, 1)
+        if gained is not None and profile
+        else None,
+        "best_day": best_day.day.date() if best_day and best_day.follows else None,
+        "best_day_follows": best_day.follows if best_day else None,
+        "top": top[:5],
+        "from_posts": sum(p.follows or 0 for p in media),
+        "formats": formats,
+    }
+
+
+MONTH_NAMES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)  # fmt: skip
+
+
+def follower_history(session: Session, workspace_id: int) -> dict:
+    """Seguidores totales por día: real donde la app lo guardó y aproximado hacia atrás.
+
+    Meta no da el total de seguidores de días pasados, solo cuántos empezaron a seguir cada
+    día (sin restar los que dejaron). Se reconstruye así:
+    - Se toma el último total real guardado que tenga datos diarios hasta ese día (ancla).
+    - Si lo ganado hasta el ancla supera el total (hubo gente que dejó de seguir), se asume que
+      la cuenta arrancó en 0 y se reparte esa diferencia en proporción a lo ganado.
+    - Si no (faltan datos viejos), se resta hacia atrás lo ganado desde el total del ancla.
+    Devuelve {"days": {fecha: total}, "real": {fecha: total}}.
+    """
+    from cmr_leads.db.models import InstagramAccountSnapshot
+
+    snapshots = {
+        sn.day.date(): sn.followers
+        for sn in session.scalars(
+            select(InstagramAccountSnapshot)
+            .where(
+                InstagramAccountSnapshot.workspace_id == workspace_id,
+                InstagramAccountSnapshot.followers.is_not(None),
+            )
+            .order_by(InstagramAccountSnapshot.day)
+        )
+    }
+    gains = {
+        r.day.date(): r.follows
+        for r in session.scalars(
+            select(InstagramDaily).where(
+                InstagramDaily.workspace_id == workspace_id, InstagramDaily.follows.is_not(None)
+            )
+        )
+    }
+    if not snapshots or not gains:
+        return {"days": dict(snapshots), "real": dict(snapshots)}
+    first, last_gain = min(gains), max(gains)
+    anchors = [d for d in snapshots if d <= last_gain] or [min(snapshots)]
+    anchor = max(anchors)
+    end = max(max(snapshots), last_gain)
+    cum, running, day = {}, 0, first
+    while day <= end:
+        running += gains.get(day, 0)
+        cum[day] = running
+        day += timedelta(days=1)
+    total_at_anchor = cum.get(anchor, running)
+    followers = snapshots[anchor]
+    days = {}
+    for d, c in cum.items():
+        if d <= anchor:
+            if total_at_anchor >= followers and total_at_anchor:
+                days[d] = round(c * followers / total_at_anchor)
+            else:
+                days[d] = followers - (total_at_anchor - c)
+        else:
+            days[d] = followers + (c - total_at_anchor)
+    days.update(snapshots)  # donde hay dato real, manda el real
+    return {"days": days, "real": dict(snapshots)}
+
+
+def value_on(history: dict, day: date) -> int | None:
+    """El total del último día con dato hasta `day` (incluido)."""
+    known = [d for d in history["days"] if d <= day]
+    return history["days"][max(known)] if known else None
+
+
+def follower_months(history: dict, gains_by_month: dict, today: date) -> list[dict]:
+    """Una fila por mes: seguidores al cierre (o hoy, en el mes actual) y ganados."""
+    if not history["days"]:
+        return []
+    start = min(history["days"]).replace(day=1)
+    rows, month = [], start
+    while month <= today.replace(day=1):
+        nxt = (month + timedelta(days=32)).replace(day=1)
+        last = min(nxt - timedelta(days=1), today)
+        total = value_on(history, last)
+        real_days = [d for d in history["real"] if month <= d <= last]
+        is_real = bool(real_days) and max(real_days) == max(d for d in history["days"] if d <= last)
+        before = value_on(history, month - timedelta(days=1))
+        # Ganados = diferencia con el cierre del mes anterior (lo que de verdad subió la cuenta).
+        # El primer mes no tiene cierre anterior: se usa lo que informa Meta, sin pasar del total.
+        gained = total - before if total is not None and before is not None else None
+        if gained is None and month in gains_by_month:
+            gained = gains_by_month[month] if total is None else min(gains_by_month[month], total)
+        rows.append(
+            {
+                "month": month,
+                "name": f"{MONTH_NAMES[month.month - 1].capitalize()} {month.year}",
+                "total": total,
+                "gained": gained,
+                "current": month == today.replace(day=1),
+                "real": is_real,
+            }
+        )
+        month = nxt
+    return rows

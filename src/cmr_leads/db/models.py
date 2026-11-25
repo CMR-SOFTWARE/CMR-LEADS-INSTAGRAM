@@ -523,6 +523,9 @@ class InstagramDaily(Base):
     accounts_engaged: Mapped[int | None] = mapped_column(Integer)
     total_interactions: Mapped[int | None] = mapped_column(Integer)
     link_taps: Mapped[int | None] = mapped_column(Integer)
+    follows: Mapped[int | None] = mapped_column(
+        Integer
+    )  # cuentas que empezaron a seguir ese día (no resta las que dejaron)
     # Toques a los botones del perfil por tipo: {"CALL": 2, "DIRECTION": 1, ...}
     link_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
@@ -562,3 +565,30 @@ class InstagramPlanItem(Base):
     origin_day: Mapped[datetime | None] = mapped_column(DateTime)
     removed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class InstagramScheduled(Base):
+    """Una publicación programada desde la app: la app la sube a Instagram a la hora indicada.
+
+    status: pendiente | publicando | publicada | error | vencida (la compu estaba apagada
+    a la hora indicada: se pregunta antes de publicar) | cancelada.
+    `publish_at` y `published_at` en UTC. `files` son los nombres de archivo guardados en
+    la carpeta de la programación, en orden (para carruseles).
+    """
+
+    __tablename__ = "instagram_scheduled"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    plan_item_id: Mapped[int | None] = mapped_column(ForeignKey("instagram_plan_items.id"))
+    kind: Mapped[str] = mapped_column(String(20))  # reel | carrusel | imagen | historia
+    caption: Mapped[str | None] = mapped_column(Text)
+    publish_at: Mapped[datetime] = mapped_column(DateTime)
+    files: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="pendiente")
+    media_id: Mapped[str | None] = mapped_column(String(64))
+    permalink: Mapped[str | None] = mapped_column(String(300))
+    error: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)

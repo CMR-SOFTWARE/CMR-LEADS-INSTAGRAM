@@ -243,6 +243,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             threading.Thread(
                 target=app.state.stories_loop, name="instagram-stories", daemon=True
             ).start()
+        if settings.instagram_publish_configured:
+            threading.Thread(
+                target=app.state.publish_loop, name="instagram-publish", daemon=True
+            ).start()
         if settings.ads_configured and settings.meta_ads_sync_hours:
             threading.Thread(target=app.state.ads_loop, name="meta-ads", daemon=True).start()
         yield

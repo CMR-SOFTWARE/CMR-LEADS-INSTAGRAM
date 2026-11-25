@@ -30,11 +30,21 @@ class GraphClient:
         self.requests_made = 0
 
     def get(self, path: str, token: str | None = None, **params: Any) -> dict:
+        return self._request("GET", path, token, params)
+
+    def post(self, path: str, token: str | None = None, **data: Any) -> dict:
+        return self._request("POST", path, token, data)
+
+    def _request(self, method: str, path: str, token: str | None, params: dict) -> dict:
         if self._on_request:
             self._on_request()  # puede cortar por tope diario
         self.requests_made += 1
         params["access_token"] = token or self._token
-        response = self._http.get(f"{GRAPH_URL}/{self._version}/{path.lstrip('/')}", params=params)
+        url = f"{GRAPH_URL}/{self._version}/{path.lstrip('/')}"
+        if method == "GET":
+            response = self._http.get(url, params=params)
+        else:
+            response = self._http.post(url, data=params)
         try:
             payload = response.json()
         except ValueError as exc:

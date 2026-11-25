@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     meta_max_stats_requests_per_day: int = 600
     # Cupo aparte para las historias: Meta las borra a las 24 h y no pueden quedarse sin consultas.
     meta_max_stories_requests_per_day: int = 300
+    # Publicar desde la app: Meta baja las fotos y videos desde un link público, así que
+    # antes de publicar se suben a un bucket público de Supabase Storage y después se borran.
+    supabase_url: str | None = None  # https://xxxx.supabase.co
+    supabase_service_key: str | None = None  # clave service_role (solo en .env, nunca en el código)
+    supabase_bucket: str = "instagram"
+    instagram_publish_dir: Path = Path("data/programadas")
+    # Si la compu estaba apagada y pasaron más de estos minutos, no publica sola: pregunta.
+    instagram_publish_grace_minutes: int = 30
 
     # Publicidad (Meta Ads). Token de un usuario del sistema de la app de anuncios
     # (permisos ads_read y business_management). Va aparte del token de Instagram.
@@ -107,6 +115,10 @@ class Settings(BaseSettings):
     @property
     def instagram_configured(self) -> bool:
         return bool(self.meta_access_token and self.instagram_business_account_id)
+
+    @property
+    def instagram_publish_configured(self) -> bool:
+        return bool(self.instagram_configured and self.supabase_url and self.supabase_service_key)
 
     @property
     def ads_configured(self) -> bool:

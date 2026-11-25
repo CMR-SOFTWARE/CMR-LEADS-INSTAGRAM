@@ -213,3 +213,97 @@ def test_posts_are_not_glued_to_a_fixed_post_in_the_next_week(session, workspace
     glued = [i for c in (sunday_before, tuesday) for i in c["items"] if not i.get("test")]
     free_days = [c for row in after["weeks"] for c in row if c["in_month"] and not c["items"]]
     assert not glued or len(free_days) < 3
+
+
+def _feed_items(c):
+    return sorted(
+        (cell["date"], i["kind"])
+        for row in c["weeks"]
+        for cell in row
+        for i in cell["items"]
+        if cell["in_month"]
+    )
+
+
+def test_no_posts_on_consecutive_days_and_no_reel_after_reel(session, workspace):
+    _seed(session, workspace)
+    for month in (date(2026, 12, 1), date(2027, 1, 1)):
+        items = _feed_items(build_calendar(session, workspace.id, month, TODAY, []))
+        assert items
+        for (d1, k1), (d2, k2) in zip(items, items[1:], strict=False):
+            assert (d2 - d1).days > 1, (d1, d2)
+            assert not (k1 == "reel" and k2 == "reel"), (d1, d2)
+
+
+def test_rules_respect_fixed_reel_and_suggest_exceptions(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    base = build_calendar(session, workspace.id, month, TODAY, [])
+    day = base["weeks"][2][2]["date"]
+    session.add(InstagramPlanItem(workspace_id=workspace.id, day=_dt(day), hour=18, kind="reel"))
+    session.flush()
+    c = build_calendar(session, workspace.id, month, TODAY, [])
+    items = _feed_items(c)
+    assert (day, "reel") in items  # lo fijado se respeta
+    for (d1, k1), (d2, k2) in zip(items, items[1:], strict=False):
+        assert (d2 - d1).days > 1
+        assert not (k1 == "reel" and k2 == "reel")
+    assert isinstance(c["suggestions"], list)
+
+
+def test_warns_when_fixed_items_break_the_rules(session, workspace):
+    _seed(session, workspace)
+    month = date(2026, 12, 1)
+    for day in (date(2026, 12, 26), date(2026, 12, 31)):
+        session.add(
+            InstagramPlanItem(workspace_id=workspace.id, day=_dt(day), hour=18, kind="reel")
+        )
+    session.flush()
+    c = build_calendar(session, workspace.id, month, TODAY, [])
+    items = _feed_items(c)
+    between = [k for d, k in items if date(2026, 12, 26) < d < date(2026, 12, 31)]
+    if not between:
+        assert any("26/12" in s["text"] and "reels seguidos" in s["text"] for s in c["suggestions"])
+
+
+def test_story_slots_need_enough_stories(session, workspace):
+    from cmr_leads.instagram.calendar import stories_plan
+
+    stories = []
+    for i in range(30):  # muchas historias parejas a la tarde (18 h AR = 21 UTC)
+        stories.append(
+            InstagramPost(
+                workspace_id=workspace.id, media_id=f"s{i}", product_type="STORY",
+                published_at=datetime(2026, 10, 1) + timedelta(days=i, hours=21), views=40,
+            )
+        )  # fmt: skip
+    for i in range(2):  # dos historias a las 7 h AR que explotaron
+        stories.append(
+            InstagramPost(
+                workspace_id=workspace.id, media_id=f"m{i}", product_type="STORY",
+                published_at=datetime(2026, 10, 1) + timedelta(days=i, hours=10), views=900,
+            )
+        )  # fmt: skip
+    plan = stories_plan(stories, Stats([]), 30)
+    assert plan["source"] == "historias"
+    assert "6 a 9 h" not in plan["slots"]
+
+
+def test_story_plan_gives_exact_hours(session, workspace):
+    from cmr_leads.instagram.calendar import stories_plan
+
+    stories = []
+    for i in range(20):  # a las 10 AR (13 UTC) rinden más que a las 11 AR
+        for hour, views in ((13, 60), (14, 30), (21, 40)):
+            stories.append(
+                InstagramPost(
+                    workspace_id=workspace.id, media_id=f"s{i}-{hour}", product_type="STORY",
+                    published_at=datetime(2026, 10, 1) + timedelta(days=i, hours=hour),
+                    views=views,
+                )
+            )  # fmt: skip
+    plan = stories_plan(stories, Stats([]), 20)
+    times = {t["slot"]: t["time"] for t in plan["times"]}
+    assert times["9 a 12 h"] == "10:00"
+    assert times["18 a 21 h"] == "18:00"
+    assert plan["time_labels"] == [t["time"] for t in plan["times"]]

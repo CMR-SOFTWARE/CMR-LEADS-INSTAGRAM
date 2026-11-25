@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ic %}
+{% block title %}Programar en Instagram · CMR Lead Finder{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Programar en Instagram</h1>
+    <p>Subí el archivo y el texto: la app lo publica sola a la hora indicada. Lo que se publica entra en las estadísticas y el calendario se ajusta con esos números.</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/instagram/calendario">{{ ic("calendar") }} Calendario del mes</a>
+    <a class="btn" href="/instagram">Volver a Instagram</a>
+  </div>
+</div>
+
+{% if not configured %}
+<div class="notice">
+  Todavía no se puede publicar: falta configurar Supabase Storage (SUPABASE_URL y SUPABASE_SERVICE_KEY en el .env) y el permiso <b>instagram_content_publish</b> en el token de Meta.
+  Podés programar igual: se publica cuando esté todo listo y la hora no haya pasado.
+</div>
+{% endif %}
+
+{% if overdue %}
+<div class="notice">
+  {{ overdue }} publicación{{ "es" if overdue != 1 }} no salió{{ "eron" if overdue != 1 }} porque la app estaba cerrada a la hora programada. Elegí abajo si publicar ahora o cambiar la hora.
+</div>
+{% endif %}
+
+<div class="grid grid-2">
+  <div class="card">
+    <div class="card-head"><h2>Nueva publicación</h2></div>
+    <form method="get" action="/instagram/programar">
+      {% if form.id %}<input type="hidden" name="id" value="{{ form.id }}">{% endif %}
+      {% if form.origen %}<input type="hidden" name="origen" value="{{ form.origen }}">{% endif %}
+      <div class="field">
+        <label for="formato">Formato</label>
+        <select id="formato" name="formato" onchange="this.form.submit()">
+          {% for k, v in kinds.items() %}<option value="{{ k }}" {{ "selected" if k == form.formato }}>{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+    </form>
+    <form method="post" action="/instagram/programar" enctype="multipart/form-data">
+      <input type="hidden" name="formato" value="{{ form.formato }}">
+      <input type="hidden" name="origen" value="{{ form.origen or '' }}">
+      <input type="hidden" name="id" value="{{ form.id or '' }}">
+      <div class="form-grid">
+        <div class="field">
+          <label for="dia">Día</label>
+          <input type="date" id="dia" name="dia" required min="{{ today.isoformat() }}" value="{{ form.dia }}">
+        </div>
+        <div class="field">
+          <label for="hora">Hora</label>
+          <input type="time" id="hora" name="hora" required value="{{ form.hora }}">
+        </div>
+      </div>
+      {% if form.suggested %}<p class="muted small" style="margin-top:-6px">{{ form.suggested }}</p>{% endif %}
+      <div class="field">
+        <label for="archivos">{{ hint[form.formato] }}</label>
+        <input type="file" id="archivos" name="files" required {{ "multiple" if form.formato == "carrusel" }}
+          accept="{{ accept[form.formato] }}">
+      </div>
+      {% if form.formato != "historia" %}
+      <div class="field">
+        <label for="texto">Texto de la publicación</label>
+        <textarea id="texto" name="texto" rows="8" maxlength="2200" placeholder="El texto que va abajo de la publicación, con el WhatsApp y los hashtags."></textarea>
+      </div>
+      {% endif %}
+      <button class="btn btn-primary" data-busy="Guardando...">{{ ic("send") }} Programar</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Programadas</h2><span class="muted small">{{ upcoming }} por salir</span></div>
+    {% if items %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Cuándo</th><th>Formato</th><th>Texto</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+      {% for s in items %}
+      <tr>
+        <td>{{ s.local.strftime("%d/%m %H:%M") }}</td>
+        <td>{{ kinds.get(s.kind, s.kind) }}{% if (s.files or [])|length > 1 %} ({{ (s.files or [])|length }}){% endif %}</td>
+        <td style="max-width:220px">{{ ((s.caption or "Sin texto").split("\n")[0])[:60] }}</td>
+        <td>
+          <span class="chip {{ status_chip.get(s.status, "") }}">{{ status_label.get(s.status, s.status) }}</span>
+          {% if s.error and s.status in ("error", "vencida") %}<div class="muted small">{{ s.error }}</div>{% endif %}
+          {% if s.permalink %}<div><a class="small" href="{{ s.permalink }}" target="_blank" rel="noopener">Ver en Instagram</a></div>{% endif %}
+        </td>
+        <td>
+          {% if s.status in ("pendiente", "vencida", "error") %}
+          <div class="stack" style="gap:6px">
+            {% if s.status in ("vencida", "error") %}
+            <form method="post" action="/instagram/programadas/{{ s.id }}/publicar"><button class="btn btn-primary">Publicar ahora</button></form>
+            {% endif %}
+            <details>
+              <summary class="small">Cambiar día u hora</summary>
+              <form method="post" action="/instagram/programadas/{{ s.id }}/reprogramar" class="stack" style="gap:6px; margin-top:6px">
+                <input type="date" name="dia" required min="{{ today.isoformat() }}" value="{{ s.local.date().isoformat() if s.local.date() >= today else today.isoformat() }}">
+                <input type="time" name="hora" required value="{{ s.local.strftime('%H:%M') }}">
+                <button class="btn">Guardar</button>
+              </form>
+            </details>
+            <form method="post" action="/instagram/programadas/{{ s.id }}/cancelar" onsubmit="return confirm('¿Cancelar esta publicación? Se borran los archivos guardados.')"><button class="btn">Cancelar</button></form>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <p class="muted">Todavía no programaste nada.</p>
+    {% endif %}
+    <p class="muted small" style="margin-bottom:0">Instagram no deja programar desde afuera: la app publica a la hora indicada, así que tiene que estar abierta. Si estaba cerrada y pasaron más de {{ grace }} minutos, no publica sola: te pregunta.</p>
+  </div>
+</div>
+{% endblock %}

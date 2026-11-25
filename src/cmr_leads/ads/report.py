@@ -162,6 +162,46 @@ def build_report_data(
     return data
 
 
+AD_KEYS = (
+    "name", "campaign", "status", "spend", "impressions", "link_clicks", "messages",
+    "engagement", "video_views", "objective", "objective_label", "result_label", "result_unit",
+    "result", "cost_per_result", "cost_per_thousand_reach", "reach", "cost_per_message",
+)  # fmt: skip
+TOTAL_KEYS = (
+    "spend", "reach", "impressions", "link_clicks", "messages", "cost_per_message",
+    "engagement", "cost_per_thousand_reach", "video_views",
+)  # fmt: skip
+
+
+def normalize_report_data(data: dict | None) -> dict:
+    """Completa los datos de reportes guardados con versiones anteriores (les faltan campos).
+
+    Así un reporte viejo se sigue viendo y bajando aunque después se agreguen métricas nuevas.
+    """
+    d = dict(data or {})
+    month = d.get("month") or ""
+    d.setdefault("month", month)
+    d.setdefault("label", month)
+    d.setdefault("previous_label", "el mes anterior")
+    d.setdefault("generated_at", utcnow().isoformat(timespec="minutes"))
+    d.setdefault("planned_budget", 0)
+    for key in ("totals", "previous", "changes"):
+        block = dict(d.get(key) or {})
+        for k in TOTAL_KEYS:
+            block.setdefault(k, 0 if key != "changes" and k in ("spend",) else None)
+        d[key] = block
+    for key in ("campaigns", "ads", "best_ads", "worst_ads", "recommendations"):
+        items = [x for x in (d.get(key) or []) if isinstance(x, dict)]
+        if key != "recommendations":
+            items = [{**dict.fromkeys(AD_KEYS), **x} for x in items]
+            for x in items:
+                x["spend"] = x["spend"] or 0
+        else:
+            items = [{"texto": "", **x} for x in items]
+        d[key] = items
+    return d
+
+
 def save_report(
     session: Session,
     workspace_id: int,
