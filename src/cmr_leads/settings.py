@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     auto_search_state: Path = Path("data/auto_search.json")
 
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
     # Alternativa a Gemini para clasificar respuestas (opcional). Sin ninguna, se usan reglas.
     anthropic_api_key: str | None = None

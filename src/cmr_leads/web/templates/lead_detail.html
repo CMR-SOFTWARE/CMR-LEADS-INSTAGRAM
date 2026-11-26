@@ -105,12 +105,12 @@
       <div class="actions">
         <form method="post" action="/leads/{{ lead.id }}/feedback" class="inline">
           <input type="hidden" name="value" value="1"><input type="hidden" name="reason" value="buen_perfil">
-          <button class="btn">👍 Sí</button>
+          <button class="btn{{ ' btn-green' if lead.feedback == 1 }}">👍 Sí</button>
         </form>
         <form method="post" action="/leads/{{ lead.id }}/feedback" class="actions">
           <input type="hidden" name="value" value="-1">
           <select name="reason" style="width:auto">
-            {% for key, label in FEEDBACK_REASONS.items() if key != "buen_perfil" %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            {% for key, label in FEEDBACK_REASONS.items() if key != "buen_perfil" %}<option value="{{ key }}" {{ 'selected' if lead.feedback_reason == key }}>{{ label }}</option>{% endfor %}
           </select>
           <button class="btn">👎 No</button>
         </form>

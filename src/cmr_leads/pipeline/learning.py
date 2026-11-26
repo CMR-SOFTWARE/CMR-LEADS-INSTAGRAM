@@ -52,6 +52,7 @@ FEEDBACK_REASONS = {
     "no_es_negocio": "No es un negocio",
     "no_es_local": "No es de la zona",
     "no_necesita": "No necesita lo que ofrecemos",
+    "ya_tiene_sistema": "Ya tiene agenda o sistema",
     "muy_grande": "Cadena / muy grande",
     "competidor": "Competidor",
     "ya_es_cliente": "Ya es cliente",

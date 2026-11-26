@@ -8,7 +8,7 @@ from cmr_leads.db.models import Lead
 from cmr_leads.settings import Settings
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-FALLBACK_MODELS = ("gemini-3.5-flash", "gemini-3.1-flash-lite")
+FALLBACK_MODELS = ("gemini-3.8-flash", "gemini-3.1-flash-lite")
 BUSY_STATUSES = (429, 503)
 
 SERVICES = {
@@ -32,13 +32,18 @@ Esto es lo que vendemos (usalo para elegir qué ofrecer y cómo contarlo):
 
 Tiene que sonar como un vecino que les escribe desde el celular, no como una empresa ni una IA:
 - Español rioplatense y bien coloquial, tratando al negocio de "ustedes".
-- Entre 2 y 3 oraciones, máximo 50 palabras.
+- Entre 3 y 4 oraciones, máximo 70 palabras.
 - Saludo corto y natural. NO digas tu nombre ni "soy de…": a lo sumo "les escribo de {company}, \
 acá de {city}" o directamente entrá en tema.
-- Mencioná UNA observación concreta sobre su negocio que esté en la ficha (por ejemplo: que no \
-tienen web, que su web no se adapta al celular, que se manejan solo con Instagram).
-- Ofrecé UN solo producto del catálogo, el que más le sirva según su rubro (la ficha trae una \
-sugerencia). Nombralo si es CMR Nexo o CMR Canchas, y contá qué ganarían ellos en el día a día.
+- Si la ficha trae "Qué ofrecerle (ya analizado)", el mensaje se arma sobre ESE análisis: \
+ofrecé ese producto (no cambies a otro) y apoyate en el "Por qué": usá el dato concreto de su \
+negocio que lo justifica (su trayectoria, que todo pasa por un Linktree, que no tienen web, etc.) \
+y contá en concreto qué ganarían ellos con eso en el día a día (más clientes que los encuentran, \
+consultas directas por WhatsApp, menos tiempo respondiendo, etc.).
+- Si no hay análisis, mencioná UNA observación concreta de la ficha y ofrecé UN solo producto del \
+catálogo, el que más le sirva según su rubro (la ficha trae una sugerencia).
+- Nombrá el producto si es CMR Nexo o CMR Canchas. Hablá de su rubro con sus palabras (una óptica \
+habla de anteojos y clientes, una peluquería de turnos), no en abstracto.
 - Si en "Clientes" del catálogo hay uno del mismo rubro, podés nombrarlo como ejemplo. Si no hay, \
 no nombres ninguno.
 - No pongas precios, links ni teléfonos. Para CMR Nexo podés mencionar la promo de lanzamiento.
@@ -99,6 +104,8 @@ def build_lead_facts(lead: Lead, include_offer: bool = True) -> str:
     ai_offer = (lead.raw_data or {}).get("ai_offer") if include_offer else None
     if ai_offer:
         facts.append(f"Qué ofrecerle (ya analizado): {ai_offer['offer']}. {ai_offer['pitch']}")
+        if ai_offer.get("reason"):
+            facts.append(f"Por qué le sirve (ya analizado): {ai_offer['reason']}")
     elif service := SERVICES.get(lead.recommended_service or ""):
         facts.append(f"Lo que más le serviría (según nuestro análisis): {service}")
     return "\n".join(facts)
@@ -131,8 +138,10 @@ def generate(
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": generation_config,
     }
-    client = http or httpx.Client(timeout=60)
-    models = dict.fromkeys([settings.gemini_model, *FALLBACK_MODELS])
+    # 20 s por modelo: si uno se cuelga, se pasa al siguiente en vez de dejar la pantalla esperando.
+    client = http or httpx.Client(timeout=20)
+    models = list(dict.fromkeys([settings.gemini_model, *FALLBACK_MODELS]))
+    response, payload, failure = None, {}, None
     for model in models:
         try:
             response = client.post(
@@ -142,10 +151,13 @@ def generate(
             )
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            raise AiWriterError(f"No se pudo conectar con Gemini ({type(exc).__name__})") from exc
+            failure, response = exc, None  # sin respuesta (colgado o caído): probar el siguiente
+            continue
         # Modelo saturado o sin cupo: se prueba con el siguiente.
         if response.status_code not in BUSY_STATUSES:
             break
+    if response is None:
+        raise AiWriterError(f"No se pudo conectar con Gemini ({type(failure).__name__})")
     if response.status_code >= 400 or "error" in payload:
         message = (payload.get("error") or {}).get("message", f"HTTP {response.status_code}")
         raise AiWriterError(f"Gemini: {message}")

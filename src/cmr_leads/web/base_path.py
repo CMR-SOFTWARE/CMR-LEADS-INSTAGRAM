@@ -16,7 +16,9 @@ LINK = re.compile(rb'((?:href|src|action|formaction|data-[a-z-]+)=")/(?!/)')
 
 
 def _prefix_location(value: str, base: str) -> str:
-    if value.startswith("/") and not value.startswith("//") and not value.startswith(base + "/"):
+    # Siempre se agrega: la app nunca arma rutas con el prefijo, y "/leads/2" es una ruta
+    # propia de la app (la ficha del lead), no una que ya lo traiga.
+    if value.startswith("/") and not value.startswith("//"):
         return base + value
     return value
 

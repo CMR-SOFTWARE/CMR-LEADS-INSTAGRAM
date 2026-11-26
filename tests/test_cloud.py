@@ -171,6 +171,13 @@ def test_works_under_leads_path(tmp_path):
             follow_redirects=False,
         )
         assert ok.headers["location"] == "/leads/instagram"
+        lead = c.post(
+            "/leads/login",
+            data={"usuario": "tomi", "clave": "clave-tomi", "siguiente": "/leads/5"},
+            headers=landing,
+            follow_redirects=False,
+        )
+        assert lead.headers["location"] == "/leads/leads/5"  # la ficha del lead, con prefijo
         home = c.get("/leads/", follow_redirects=False)
         assert home.status_code == 200
         assert 'href="/leads/leads"' in home.text and 'href="/leads/static/icons.svg' in home.text
