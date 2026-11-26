@@ -362,10 +362,12 @@ def score(data: ScoringInput, config: ScoringConfig) -> ScoreResult:
     sells_online = bool(data.has_website and (data.website_signals or {}).get("ecommerce"))
     if _contains_any(text_with_username, config.canchas_keywords):
         result.recommended_service = "cmr_canchas"
-    elif business_type in config.nexo_business_types:
-        result.recommended_service = "cmr_nexo"
-    elif business_type in config.appointment_business_types or appointments:
-        result.recommended_service = "sistema_turnos"
+    elif (
+        business_type in config.nexo_business_types
+        or business_type in config.appointment_business_types
+        or appointments
+    ):
+        result.recommended_service = "cmr_nexo"  # todo lo que trabaja con turnos va a Nexo
     elif (business_type in config.store_business_types or sells_by_dm) and not sells_online:
         result.recommended_service = "tienda_online"
     elif not data.has_website:

@@ -86,7 +86,8 @@ Proyectos únicos: 50% de seña y 50% al entregar.
 
 - Canchas de fútbol, pádel o tenis, complejos deportivos → CMR Canchas.
 - Peluquerías, barberías, estéticas, masajes, psicólogos, kinesiólogos, consultorios → CMR Nexo.
-- Gimnasios y estudios con clases → Plan Gestión con turnos para las clases.
+- Gimnasios, pilates, yoga y estudios con clases → CMR Nexo (turnos para las clases).
+- Todo negocio que trabaja con turnos o reservas → CMR Nexo.
 - Ropa, gastronomía y negocios que venden por mensaje → Plan Gestión (catálogo, carrito y pedidos).
 - Ópticas, ferreterías, librerías y comercios que venden productos → Plan Gestión con catálogo de
   sus productos (que los encuentren en Google, vean lo que tienen y les escriban por WhatsApp).

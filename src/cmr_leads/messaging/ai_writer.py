@@ -216,6 +216,8 @@ siempre dentro del catálogo.
 WhatsApp. NO tiene catálogo de productos, precios cargables, stock, carrito ni panel. Si la \
 propuesta incluye mostrar sus productos en un catálogo, una tienda o pedidos, es Plan Gestión \
 (necesita base de datos y panel para cargarlos). No mezcles: "Plan Web con catálogo" no existe.
+- Si el negocio trabaja con turnos, reservas o clases (peluquería, estética, pilates, gimnasio, \
+consultorio), ofrecé CMR Nexo, no Plan Gestión.
 - Preferí lo más simple y barato que le sirva: es más fácil que acepten algo chico y después crecer.
 - "probability" es la chance (0-100) de que contrate si le escribimos, según qué tan clara es su \
 necesidad, si ya tiene web o sistema, si es un negocio activo y si hay forma de contactarlo.

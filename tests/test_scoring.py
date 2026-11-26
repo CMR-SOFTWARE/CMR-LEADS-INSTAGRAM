@@ -109,7 +109,7 @@ def test_recommends_own_products_by_rubro(scoring_config):
     gym = score(_input(display_name="Gimnasio Ironman", category="Gimnasio"), scoring_config)
     assert canchas.recommended_service == "cmr_canchas"
     assert nexo.recommended_service == "cmr_nexo"
-    assert gym.recommended_service == "sistema_turnos"
+    assert gym.recommended_service == "cmr_nexo"
 
 
 def test_shops_get_web_plans_not_nexo(scoring_config):
