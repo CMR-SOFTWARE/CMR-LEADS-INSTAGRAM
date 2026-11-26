@@ -36,6 +36,8 @@ class EnrichSummary:
 
 
 def enrich_website(lead: Lead, fetcher: Callable[[str], WebsiteSignals], country: str) -> None:
+    if lead.has_link_in_bio_only:
+        return  # WhatsApp, Instagram, Linktree...: no es su web, analizarla da datos falsos
     signals = fetcher(lead.website)
     lead.raw_data = {**(lead.raw_data or {}), "website": signals.to_json()}
     contacts = extract_from_links(signals.links, country)

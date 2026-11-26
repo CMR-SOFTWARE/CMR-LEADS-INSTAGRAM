@@ -10,6 +10,20 @@ from cmr_leads.settings import Settings
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 FALLBACK_MODELS = ("gemini-3.8-flash", "gemini-3.1-flash-lite")
 BUSY_STATUSES = (429, 503)
+WHATSAPP_DOMAINS = ("wa.me", "wa.link", "whatsapp.com")
+SOCIAL_DOMAINS = (
+    "instagram.com",
+    "facebook.com",
+    "fb.com",
+    "fb.me",
+    "m.me",
+    "ig.me",
+    "tiktok.com",
+    "youtube.com",
+    "youtu.be",
+    "twitter.com",
+    "x.com",
+)
 
 SERVICES = {
     "cmr_nexo": "CMR Nexo (turnos online para negocios de servicios)",
@@ -42,6 +56,9 @@ y contá en concreto qué ganarían ellos con eso en el día a día (más client
 consultas directas por WhatsApp, menos tiempo respondiendo, etc.).
 - Si no hay análisis, mencioná UNA observación concreta de la ficha y ofrecé UN solo producto del \
 catálogo, el que más le sirva según su rubro (la ficha trae una sugerencia).
+- Si ofrecés el Plan Web, no prometas catálogo de productos, tienda ni carga de precios: eso es \
+del Plan Gestión. Con el Plan Web hablá de que los encuentren en Google, vean quiénes son y les \
+escriban por WhatsApp.
 - Nombrá el producto si es CMR Nexo o CMR Canchas. Hablá de su rubro con sus palabras (una óptica \
 habla de anteojos y clientes, una peluquería de turnos), no en abstracto.
 - Si en "Clientes" del catálogo hay uno del mismo rubro, podés nombrarlo como ejemplo. Si no hay, \
@@ -66,7 +83,15 @@ class AiWriterError(Exception):
 def describe_website(lead: Lead) -> str:
     """Resume en una frase la situación web del negocio para darle contexto al modelo."""
     if lead.has_link_in_bio_only:
-        return "No tiene web propia: solo un link tipo Linktree."
+        # Decir qué link es de verdad: si no, la IA inventa que "usan Linktree".
+        domain = lead.website_domain or ""
+        if any(domain == d or domain.endswith("." + d) for d in WHATSAPP_DOMAINS):
+            return "No tiene web propia: el link que tiene cargado es su WhatsApp directo."
+        if any(domain == d or domain.endswith("." + d) for d in SOCIAL_DOMAINS):
+            return (
+                f"No tiene web propia: el link que tiene cargado lleva a una red social ({domain})."
+            )
+        return f"No tiene web propia: solo una página de links ({domain})."
     if not lead.website:
         if lead.instagram_username:
             return "No tiene web propia: usa Instagram como vidriera."
@@ -138,8 +163,8 @@ def generate(
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": generation_config,
     }
-    # 20 s por modelo: si uno se cuelga, se pasa al siguiente en vez de dejar la pantalla esperando.
-    client = http or httpx.Client(timeout=20)
+    # 30 s por modelo: si uno se cuelga, se pasa al siguiente en vez de dejar la pantalla esperando.
+    client = http or httpx.Client(timeout=30)
     models = list(dict.fromkeys([settings.gemini_model, *FALLBACK_MODELS]))
     response, payload, failure = None, {}, None
     for model in models:
@@ -185,8 +210,12 @@ que sea lo más probable que nos contrate. Usá SOLO lo que vendemos:
 
 Reglas:
 - Elegí la oferta que más le resuelva un problema real según su rubro y la ficha. Puede ser un \
-plan tal cual, un producto (CMR Nexo, CMR Canchas) o una combinación armada a medida \
-(por ejemplo "Plan Web con catálogo de anteojos"), siempre dentro del catálogo.
+plan tal cual, un producto (CMR Nexo, CMR Canchas) o una combinación armada a medida, \
+siempre dentro del catálogo.
+- El Plan Web es una web de presentación: quiénes son, qué hacen, ubicación, horarios, fotos y \
+WhatsApp. NO tiene catálogo de productos, precios cargables, stock, carrito ni panel. Si la \
+propuesta incluye mostrar sus productos en un catálogo, una tienda o pedidos, es Plan Gestión \
+(necesita base de datos y panel para cargarlos). No mezcles: "Plan Web con catálogo" no existe.
 - Preferí lo más simple y barato que le sirva: es más fácil que acepten algo chico y después crecer.
 - "probability" es la chance (0-100) de que contrate si le escribimos, según qué tan clara es su \
 necesidad, si ya tiene web o sistema, si es un negocio activo y si hay forma de contactarlo.
