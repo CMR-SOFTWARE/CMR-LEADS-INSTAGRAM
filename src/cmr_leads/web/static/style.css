@@ -23,6 +23,8 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* El iPhone agranda el texto solo si algo se pasa del ancho: se lo impide. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -284,7 +286,16 @@ td input[type=number] { width: 80px; padding: 6px 8px; }
   .nav { display: flex; gap: 4px; }
   .nav a { padding: 4px; }
   .main { padding: 20px 16px 60px; }
-  .grid-2, .grid-3, .form-grid, .filters { grid-template-columns: 1fr; }
+  /* minmax(0, 1fr): una tabla ancha adentro no estira la columna (antes la página se pasaba del ancho). */
+  .grid-2, .grid-3, .form-grid, .filters { grid-template-columns: minmax(0, 1fr); }
+  .grid > *, .card { min-width: 0; }
+  .btn { white-space: normal; text-align: center; max-width: 100%; }
+  .page-head h1, h1 { font-size: 24px; }
+  .kpi .value, .stat .value, .value { font-size: 24px; }
+  .card-head, .reply-row { flex-wrap: wrap; }
+  .reply-row > * { min-width: 0; }
+  .chip { white-space: normal; }
+  .card > table, .card > .table { display: block; max-width: 100%; overflow-x: auto; }
   .lead-row { grid-template-columns: 44px minmax(0, 1fr) 56px; }
   .lead-row .row-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .lead-row .score.sm { width: 44px; height: 44px; font-size: 14px; }
