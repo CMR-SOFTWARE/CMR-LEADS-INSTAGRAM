@@ -1,11 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "regions": ["gru1"],
+  "buildCommand": "mkdir -p public && cp -r src/cmr_leads/web/static public/static",
+  "outputDirectory": "public",
   "functions": {
     "api/index.py": {
       "maxDuration": 300,
       "includeFiles": "{src/**,config/**,alembic.ini}"
     }
   },
+  "headers": [
+    {
+      "source": "/static/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }]
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

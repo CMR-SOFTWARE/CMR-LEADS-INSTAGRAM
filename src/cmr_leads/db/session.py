@@ -24,16 +24,15 @@ def make_engine(database_url: str, schema: str = DEFAULT_SCHEMA) -> Engine:
     if database_url.startswith("postgresql"):
         # Schema propio dentro del proyecto de Supabase (separado de la Landing y de Nexo).
         # prepare_threshold=None: el pooler de Supabase (modo transacción) no admite prepared
-        # statements. En la nube cada llamada abre y cierra su conexión (NullPool).
-        import os
-
-        from sqlalchemy.pool import NullPool
-
-        kwargs = {"poolclass": NullPool} if os.environ.get("VERCEL") else {"pool_pre_ping": True}
+        # statements. Se reusan pocas conexiones (abrir una nueva tarda bastante); pre_ping y
+        # recycle descartan las que el pooler haya cerrado mientras la función estaba quieta.
         return create_engine(
             database_url,
             connect_args={"options": f"-c search_path={schema}", "prepare_threshold": None},
-            **kwargs,
+            pool_size=2,
+            max_overflow=3,
+            pool_pre_ping=True,
+            pool_recycle=240,
         )
     if database_url.startswith("sqlite:///") and ":memory:" not in database_url:
         Path(database_url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)

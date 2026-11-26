@@ -30,3 +30,6 @@ instagram-*.zip
 
 # Ajustes de scoring hechos desde el panel (incluye usernames de clientes)
 config/*.local.yaml
+
+# Vercel (se arma en el deploy)
+/public
