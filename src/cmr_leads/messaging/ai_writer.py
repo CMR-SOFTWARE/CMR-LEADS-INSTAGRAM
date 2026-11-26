@@ -8,7 +8,7 @@ from cmr_leads.db.models import Lead
 from cmr_leads.settings import Settings
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-FALLBACK_MODELS = ("gemini-3.8-flash", "gemini-3.1-flash-lite")
+FALLBACK_MODELS = ("gemini-3.5-flash", "gemini-3.8-flash")
 BUSY_STATUSES = (429, 503)
 WHATSAPP_DOMAINS = ("wa.me", "wa.link", "whatsapp.com")
 SOCIAL_DOMAINS = (
@@ -163,8 +163,8 @@ def generate(
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": generation_config,
     }
-    # 30 s por modelo: si uno se cuelga, se pasa al siguiente en vez de dejar la pantalla esperando.
-    client = http or httpx.Client(timeout=30)
+    # 20 s por modelo: si uno se cuelga, se pasa al siguiente en vez de dejar la pantalla esperando.
+    client = http or httpx.Client(timeout=20)
     models = list(dict.fromkeys([settings.gemini_model, *FALLBACK_MODELS]))
     response, payload, failure = None, {}, None
     for model in models:
