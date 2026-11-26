@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "regions": ["gru1"],
-  "buildCommand": "mkdir -p public && cp -r src/cmr_leads/web/static public/static",
+  "buildCommand": "mkdir -p public/leads && cp -r src/cmr_leads/web/static public/static && cp -r src/cmr_leads/web/static public/leads/static",
   "outputDirectory": "public",
   "functions": {
     "api/index.py": {
@@ -12,7 +12,7 @@
   },
   "headers": [
     {
-      "source": "/static/(.*)",
+      "source": "/(leads/)?static/(.*)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }]
     }
   ],

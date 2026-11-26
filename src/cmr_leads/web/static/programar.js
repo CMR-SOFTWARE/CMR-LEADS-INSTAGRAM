@@ -93,7 +93,7 @@
           prepared.push({ name: file.name.replace(/\.[^.]+$/, "") + ".jpg", blob: await toJpeg(file), type: "image/jpeg" });
         }
       }
-      const response = await fetch("/instagram/subidas", {
+      const response = await fetch((window.CMR_BASE || "") + "/instagram/subidas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ formato: form.dataset.formato, nombres: prepared.map((p) => p.name) }),

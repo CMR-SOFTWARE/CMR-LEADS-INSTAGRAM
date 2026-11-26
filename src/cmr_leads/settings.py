@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     session_secret: str | None = None  # firma de la cookie de sesión (obligatoria en la nube)
     cron_secret: str | None = None  # clave que manda pg_cron para correr las tareas
     run_background: bool | None = None  # bucles en segundo plano; None = no en Vercel
+    # Sitios desde donde se aceptan formularios además del propio (la web que reenvía a /leads).
+    trusted_origins: str = "cmrsoftwaresolutions.com,www.cmrsoftwaresolutions.com"
+    base_path: str | None = None  # ruta debajo de la web (ej: /leads); None = /leads en Vercel
     workspace: str = "cmr"
     default_country: str = "AR"
     scoring_config: Path = Path("config/scoring.yaml")
@@ -121,6 +124,14 @@ class Settings(BaseSettings):
             self.instagram_dm_state = tmp / "instagram_dms.json"
             self.auto_search_state = tmp / "auto_search.json"
         return self
+
+    @property
+    def url_prefix(self) -> str:
+        value = (
+            self.base_path if self.base_path is not None else ("/leads" if self.on_vercel else "")
+        )
+        value = value.strip().strip("/")
+        return f"/{value}" if value else ""
 
     @property
     def on_vercel(self) -> bool:

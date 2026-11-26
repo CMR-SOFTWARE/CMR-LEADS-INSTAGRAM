@@ -127,3 +127,56 @@ def test_cloud_paths(monkeypatch):
     s = Settings(_env_file=None)
     assert s.needs_login and not s.background_enabled
     assert "cmr_leads" in str(s.instagram_publish_dir) and "data" not in s.backup_dir.parts[:1]
+
+
+def test_works_under_leads_path(tmp_path):
+    """Detrás de cmrsoftwaresolutions.com/leads: enlaces, redirecciones y formularios."""
+    from fastapi.testclient import TestClient
+
+    from cmr_leads.db.session import run_migrations
+    from cmr_leads.settings import Settings
+    from cmr_leads.web.app import create_app
+
+    from .conftest import ROOT
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    shutil.copy(ROOT / "config" / "scoring.yaml", config_dir / "scoring.yaml")
+    url = f"sqlite:///{tmp_path / 'web.db'}"
+    run_migrations(url)
+    settings = Settings(
+        _env_file=None,
+        database_url=url,
+        scoring_config=config_dir / "scoring.yaml",
+        website_fetch_enabled=False,
+        backup_dir=tmp_path / "backups",
+        meta_ads_sync_hours=0,
+        login_required=True,
+        login_hashes=f"tomi:{TOMI}",
+        session_secret="s",
+        run_background=False,
+        base_path="/leads",
+    )
+    with TestClient(create_app(settings), base_url="http://testserver") as c:
+        r = c.get("/leads/instagram", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/leads/login?siguiente=%2Finstagram")
+        page = c.get("/leads/login")
+        assert 'action="/leads/login"' in page.text
+        landing = {"Origin": "https://cmrsoftwaresolutions.com"}
+        ok = c.post(
+            "/leads/login",
+            data={"usuario": "tomi", "clave": "clave-tomi", "siguiente": "/instagram"},
+            headers=landing,
+            follow_redirects=False,
+        )
+        assert ok.headers["location"] == "/leads/instagram"
+        home = c.get("/leads/", follow_redirects=False)
+        assert home.status_code == 200
+        assert 'href="/leads/leads"' in home.text and 'href="/leads/static/icons.svg' in home.text
+        assert 'href="/instagram"' not in home.text  # ningún enlace se escapa de /leads
+        assert 'window.CMR_BASE = "/leads"' in home.text
+        assert c.get("/leads/static/style.css").status_code == 200
+        assert c.get("/", follow_redirects=False).status_code == 200  # directo también anda
+        other = {"Origin": "https://otro-sitio.com"}
+        assert c.post("/leads/acciones/puntuar", headers=other).status_code == 403

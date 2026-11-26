@@ -264,6 +264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=WEB_DIR / "templates")
     env = templates.env
     env.globals.update(
+        base_path=settings.url_prefix,
         STATUS_LABELS=STATUS_LABELS,
         SOURCE_LABELS=SOURCE_LABELS,
         SERVICE_LABELS=SERVICE_LABELS,
@@ -446,12 +447,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             apply_score(lead, config)
         return len(leads)
 
+    trusted = {h.strip() for h in settings.trusted_origins.split(",") if h.strip()}
+
     @app.middleware("http")
     async def same_origin_posts(request: Request, call_next):
         # Evita que otra página web dispare acciones contra el panel local (CSRF).
         if request.method == "POST":
             origin = request.headers.get("origin") or request.headers.get("referer")
-            if origin and urlparse(origin).netloc != request.url.netloc:
+            if origin and urlparse(origin).netloc not in {request.url.netloc, *trusted}:
                 return Response("Origen no permitido", status_code=403)
         return await call_next(request)
 
@@ -1762,4 +1765,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         text = "\n".join(result) if isinstance(result, list) else str(result or "ok")
         return Response(text or "ok", media_type="text/plain")
 
+    from cmr_leads.web.base_path import BasePathMiddleware
+
+    app.add_middleware(BasePathMiddleware, base=settings.url_prefix)  # el último: va por fuera
     return app
