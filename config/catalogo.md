@@ -88,7 +88,8 @@ Proyectos únicos: 50% de seña y 50% al entregar.
 - Peluquerías, barberías, estéticas, masajes, psicólogos, kinesiólogos, consultorios → CMR Nexo.
 - Gimnasios y estudios con clases → Plan Gestión con turnos para las clases.
 - Ropa, gastronomía y negocios que venden por mensaje → Plan Gestión (catálogo, carrito y pedidos).
-- Ópticas, ferreterías, librerías y comercios sin web → Plan Web (que los encuentren en Google y les
-  escriban por WhatsApp). Si ya venden mucho por mensaje, Plan Gestión.
-- Profesionales (abogados, contadores, inmobiliarias, talleres) sin web → Plan Web.
+- Ópticas, ferreterías, librerías y comercios que venden productos → Plan Gestión con catálogo de
+  sus productos (que los encuentren en Google, vean lo que tienen y les escriban por WhatsApp).
+- Profesionales y servicios sin productos para mostrar (abogados, contadores, inmobiliarias,
+  talleres) sin web → Plan Web.
 - Negocios con una web vieja o que no anda en el celular → renovarla con el Plan Web.
