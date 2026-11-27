@@ -126,6 +126,12 @@ def build_lead_facts(lead: Lead, include_offer: bool = True) -> str:
         from cmr_leads.pipeline.normalize import redact_personal_data
 
         facts.append(f"Bio: {redact_personal_data(lead.bio)[:300]}")
+    for item in lead.score_breakdown or []:
+        if item.get("rule") == "need.competitor_system_points":
+            facts.append(
+                f"Ya usa un sistema de otra empresa: {item['reason']}. No le ofrezcas lo mismo "
+                "como si no tuviera nada; si le escribís, preguntá cómo le funciona."
+            )
     ai_offer = (lead.raw_data or {}).get("ai_offer") if include_offer else None
     if ai_offer:
         facts.append(f"Qué ofrecerle (ya analizado): {ai_offer['offer']}. {ai_offer['pitch']}")

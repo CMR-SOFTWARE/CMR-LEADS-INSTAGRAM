@@ -130,3 +130,43 @@ def test_ai_offer_overrides_rule_based_plan(scoring_config):
     )
     apply_score(lead, scoring_config)
     assert lead.recommended_service == "tienda_online"
+
+
+def test_competitor_system_lowers_score_and_is_marked():
+    from pathlib import Path
+
+    from cmr_leads.pipeline.scoring import ScoringInput, load_scoring_config, score
+
+    config = load_scoring_config(Path("config/scoring.yaml"))
+    base = dict(
+        display_name="Glam Estética",
+        bio="Estética integral. Sacá tu turno",
+        category="Salón de belleza",
+        is_business_account=True,
+        whatsapp_e164="+5493364000000",
+    )
+    free = score(ScoringInput(**base), config)
+    agendapro = score(
+        ScoringInput(**base, has_website=True, website="https://glam.agendapro.com/ar"), config
+    )
+    fresha = score(
+        ScoringInput(**base, website_signals={"links": ["https://www.fresha.com/a/mb-barber"]}),
+        config,
+    )
+    tacto = score(
+        ScoringInput(
+            **base,
+            has_website=True,
+            website="https://excelsia.com.ar",
+            website_signals={"text": "Sitio desarrollado por Tacto Web"},
+        ),
+        config,
+    )
+    assert free.competitor_system is None
+    assert (agendapro.competitor_system, fresha.competitor_system, tacto.competitor_system) == (
+        "AgendaPro",
+        "Fresha",
+        "Tacto Web",
+    )
+    assert fresha.need < free.need and fresha.total < free.total
+    assert any("ya tiene sistema" in i["reason"] for i in agendapro.breakdown)
