@@ -21,9 +21,17 @@
       <a class="reply-row" href="/leads/{{ a.lead.id }}"><strong>{{ a.lead.label }}</strong><span class="chip {{ 'red' if a.kind == 'cerrar' else 'amber' }}">{{ a.detail }}{% if a.days %} · hace {{ a.days }} d{% endif %}</span></a>
       {% else %}<p class="muted small" style="margin:0">Ninguno vencido.</p>{% endfor %}
       <h3 class="small muted" style="margin:12px 0 6px">🧱 Negocios trabados</h3>
-      {% for a in briefing.stuck %}
+      {% for a in briefing.stuck[:5] %}
       <a class="reply-row" href="/leads/{{ a.lead.id }}"><strong>{{ a.lead.label }}</strong><span class="chip red">{{ a.detail }}</span></a>
       {% else %}<p class="muted small" style="margin:0">Ninguno trabado.</p>{% endfor %}
+      {% if briefing.stuck|length > 5 %}
+      <details class="more-list">
+        <summary class="small">Ver todos ({{ briefing.stuck|length }})</summary>
+        {% for a in briefing.stuck[5:] %}
+        <a class="reply-row" href="/leads/{{ a.lead.id }}"><strong>{{ a.lead.label }}</strong><span class="chip red">{{ a.detail }}</span></a>
+        {% endfor %}
+      </details>
+      {% endif %}
       {% if briefing.meetings %}
       <h3 class="small muted" style="margin:12px 0 6px">🤝 Reuniones (próximos 7 días)</h3>
       {% for mt in briefing.meetings %}<a class="reply-row" href="/leads/{{ mt.lead_id }}"><strong>{{ mt.lead.label }}</strong><span class="muted small">{{ mt.scheduled_at.strftime("%d/%m %H:%M") }}</span></a>{% endfor %}

@@ -138,7 +138,7 @@
       </form>
       <p class="muted small" style="margin:10px 0 0">Web: <strong>{{ WEB_STATUS_LABELS.get(lead.web_status, "—") }}</strong>{% if lead.stage_entered_at %} · En esta etapa desde el {{ lead.stage_entered_at|date }}{% endif %}</p>
       {% if not lead.do_not_contact %}
-      <form method="post" action="/leads/{{ lead.id }}/no-contactar" data-confirm="¿Marcar como 'no contactar'? Es permanente." style="margin-top:10px">
+      <form method="post" action="/leads/{{ lead.id }}/no-contactar" data-confirm="¿Marcar como 'no contactar'? No se le va a poder escribir más desde la app." data-confirm-ok="Sí, no contactar" style="margin-top:10px">
         <button class="btn btn-red btn-sm">🚫 No contactar nunca</button>
       </form>
       {% endif %}

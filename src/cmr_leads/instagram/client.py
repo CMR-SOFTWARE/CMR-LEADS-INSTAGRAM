@@ -55,7 +55,9 @@ class GraphClient:
             if code in RATE_LIMIT_CODES:
                 raise RateLimitedError(message)
             if code in AUTH_ERROR_CODES:
-                raise AuthError(message)
+                from cmr_leads.meta_token import explain_auth_error
+
+                raise AuthError(explain_auth_error(message))
             raise InstagramApiError(f"[{code}/{error.get('error_subcode')}] {message}")
         return payload
 

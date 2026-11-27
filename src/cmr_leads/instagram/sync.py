@@ -329,7 +329,7 @@ def sync_instagram(
     except RateLimitedError as exc:
         result.stopped_reason = f"rate limit de Meta: {exc}"
     except AuthError as exc:
-        result.stopped_reason = f"token inválido o vencido: {exc}"
+        result.stopped_reason = str(exc)
     except InstagramApiError as exc:
         result.stopped_reason = str(exc)
     result.requests = client.requests_made

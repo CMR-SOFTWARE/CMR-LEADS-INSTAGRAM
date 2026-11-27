@@ -12,12 +12,6 @@
   </div>
 </div>
 
-{% include "_briefing.html" %}
-
-{% if not instagram_configured %}
-<div class="notice">La API de Instagram no está configurada: los perfiles importados quedan pendientes y su score es más bajo. Ver README → "Configurar la API de Instagram".</div>
-{% endif %}
-
 <div class="kpis">
   <div class="kpi accent"><div class="value">{{ stats.interesantes }}</div><div class="label">Leads interesantes</div></div>
   <div class="kpi"><div class="value">{{ stats.por_revisar }}</div><div class="label">Por revisar</div></div>
@@ -25,6 +19,13 @@
   <div class="kpi"><div class="value">{{ stats.contactados }}</div><div class="label">Contactados</div></div>
   <div class="kpi"><div class="value">{{ stats.total }}</div><div class="label">Total en la base</div></div>
 </div>
+
+{% include "_briefing.html" %}
+
+{% if not instagram_configured %}
+<div class="notice">La API de Instagram no está configurada: los perfiles importados quedan pendientes y su score es más bajo. Ver README → "Configurar la API de Instagram".</div>
+{% endif %}
+
 
 {% if auto_enabled %}
 <div class="card" style="margin-bottom:16px">

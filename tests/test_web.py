@@ -390,3 +390,12 @@ def test_check_dms_without_config_explains_what_is_missing(client):
     r = client.post("/jornada/revisar-dms")
     assert "FACEBOOK_PAGE_ID" in _msg(r)
     assert "Revisar DMs de Instagram ahora" not in client.get("/jornada").text
+
+
+def test_no_contact_uses_custom_modal_and_meta_page(client):
+    lead_id = _add(client, name="Modal Test", whatsapp="3364-555333")
+    client.post(f"/leads/{lead_id}/estado", data={"status": "approved"})
+    page = client.get(f"/leads/{lead_id}").text
+    assert 'data-confirm-ok="Sí, no contactar"' in page
+    meta = client.get("/meta/reconectar").text
+    assert "Cómo renovarlo" in meta and "Comprobar de nuevo" in meta

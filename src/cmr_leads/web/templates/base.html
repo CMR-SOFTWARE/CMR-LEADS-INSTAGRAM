@@ -44,6 +44,12 @@
     <div class="sidebar-footer">Los mensajes siempre los manda una persona del equipo.</div>
   </aside>
   <main class="main" id="contenido">
+    {% if meta_alert and active != "meta_reconnect" %}
+    <div class="notice meta-alert {{ 'danger' if meta_alert.valid is false }}" role="alert">
+      <span>{% if meta_alert.valid is false %}<strong>{{ meta_alert.label }}:</strong> {{ meta_alert.problem }} {{ "La sección Publicidad no funciona" if meta_alert.label == "Publicidad" else "Completar datos, DMs y publicaciones no funcionan" }} hasta renovarlo.{% else %}El token de Meta ({{ meta_alert.label }}) vence el {{ meta_alert.expires_at.strftime("%d/%m") }}{% if meta_alert.days_left <= 0 %}, hoy{% else %}, en {{ meta_alert.days_left }} {{ "día" if meta_alert.days_left == 1 else "días" }}{% endif %}. Renovalo antes para que no se corte nada.{% endif %}</span>
+      <a class="btn btn-sm" href="/meta/reconectar">Reconectar</a>
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </div>

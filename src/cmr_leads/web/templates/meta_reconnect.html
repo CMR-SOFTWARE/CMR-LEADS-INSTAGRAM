@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Reconectar Meta · CMR Lead Finder{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Reconectar Meta</h1><p>El token es la llave con la que la app lee Instagram, los DMs y la publicidad. Dura unos 60 días y hay que renovarlo a mano.</p></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Estado</h2>
+    <form method="post" action="/meta/comprobar"><button class="btn btn-sm" data-busy="Comprobando…">Comprobar de nuevo</button></form>
+  </div>
+  {% if not configured %}
+  <p class="muted" style="margin:0">No hay ningún token de Meta configurado.</p>
+  {% endif %}
+  {% for t in tokens %}
+  <div class="reply-row">
+    <strong>{{ t.label }}</strong>
+    {% if t.valid is none %}<span class="chip">No pude consultar a Meta</span>
+    {% elif not t.valid %}<span class="chip red">{{ t.problem }}</span>
+    {% elif t.expires_at %}<span class="chip {{ 'amber' if t.expiring_soon else 'green' }}">Anda bien · vence el {{ t.expires_at.strftime("%d/%m/%Y") }}</span>
+    {% else %}<span class="chip green">Anda bien · no vence</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Cómo renovarlo</h2>
+  <ol class="steps">
+    <li>Entrá al <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Explorador de la API Graph</a>, elegí la app de CMR y tocá <strong>Generate Access Token</strong>. Aceptá los mismos permisos que tenía.</li>
+    <li>Copiá el token y pegalo en el <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener">Depurador de tokens</a>. Tocá <strong>Extend Access Token</strong> para que dure unos 60 días y copiá el nuevo.</li>
+    <li>En Vercel, en el proyecto de CMR Leads, andá a <strong>Settings → Environment Variables</strong> y reemplazá <code>META_ACCESS_TOKEN</code> (y <code>META_ADS_ACCESS_TOKEN</code> si usan el mismo). Después hacé <strong>Redeploy</strong>.</li>
+    <li>Volvé acá y tocá <strong>Comprobar de nuevo</strong>.</li>
+  </ol>
+  <p class="muted small" style="margin:0">No pegues el token en ningún chat: va solo en Vercel.</p>
+</div>
+{% endblock %}

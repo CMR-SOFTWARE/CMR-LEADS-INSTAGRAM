@@ -84,7 +84,7 @@ def enrich_pending(
                 summary.stopped_reason = f"rate limit de Meta: {exc}"
                 break
             except AuthError as exc:
-                summary.stopped_reason = f"token inválido o vencido: {exc}"
+                summary.stopped_reason = str(exc)
                 break
             except InstagramApiError as exc:
                 lead.enrichment_state = EnrichmentState.ERROR

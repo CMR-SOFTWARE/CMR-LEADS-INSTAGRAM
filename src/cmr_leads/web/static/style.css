@@ -517,3 +517,12 @@ button.cal-chip:hover { filter: brightness(.95); outline: 1px solid currentColor
 .cal-dialog input, .cal-dialog select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--cmr-borde, #D8DEEA); font: inherit; font-weight: 400; }
 .cal-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .cal-error { color: #B42318; font-size: 13px; }
+
+/* Listas largas que se despliegan ("Ver todos") */
+.more-list summary { cursor: pointer; color: var(--cmr-azul); font-weight: 600; margin: 6px 0; }
+.more-list summary:focus-visible { outline: 2px solid var(--cmr-azul); outline-offset: 2px; border-radius: 6px; }
+
+/* Aviso del token de Meta, arriba de todas las pantallas */
+.meta-alert { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.meta-alert.danger { background: var(--cmr-error-suave); color: var(--cmr-error); border-color: transparent; }
+.steps { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 8px; }

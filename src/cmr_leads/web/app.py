@@ -363,7 +363,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 current_db.reset(token)
 
     def render(request: Request, name: str, **context) -> HTMLResponse:
+        from cmr_leads.meta_token import token_statuses
+
         context.setdefault("msg", request.query_params.get("msg"))
+        context.setdefault(
+            "meta_alert", next((t for t in token_statuses(settings) if t.needs_action), None)
+        )
         context.setdefault("active", name.split(".")[0])
         return templates.TemplateResponse(request, name, context)
 
@@ -1177,6 +1182,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ],
                 google_configured=settings.google_places_configured,
             )
+
+    @app.get("/meta/reconectar", response_class=HTMLResponse)
+    def meta_reconnect(request: Request):
+        from cmr_leads.meta_token import token_statuses
+
+        return render(
+            request,
+            "meta_reconnect.html",
+            active="meta_reconnect",
+            tokens=token_statuses(settings),
+            configured=bool(settings.meta_access_token or settings.meta_ads_access_token),
+        )
+
+    @app.post("/meta/comprobar")
+    def meta_check():
+        from cmr_leads.meta_token import token_statuses
+
+        statuses = token_statuses(settings, force=True)
+        if not statuses:
+            return back("/meta/reconectar", "No hay ningún token de Meta configurado")
+        bad = [t for t in statuses if t.valid is not True]
+        if not bad:
+            return back("/meta/reconectar", "El token de Meta anda bien")
+        return back(
+            "/meta/reconectar", bad[0].problem or "No pude consultar a Meta: probá en un rato"
+        )
 
     @app.post("/mapa/ubicar")
     def lead_map_locate():

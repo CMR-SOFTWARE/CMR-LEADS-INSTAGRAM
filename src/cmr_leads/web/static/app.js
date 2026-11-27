@@ -46,9 +46,35 @@ function toast(text) {
   setTimeout(() => el.remove(), 4200);
 }
 
-// Confirmaciones simples.
+// Confirmaciones: modal propio (el confirm() del navegador traba la pestaña).
+function confirmDialog(text, okLabel = "Confirmar") {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "cal-dialog";
+    dialog.setAttribute("aria-labelledby", "confirm-title");
+    dialog.innerHTML = `<h2 id="confirm-title"></h2><div class="cal-dialog-actions">
+      <button class="btn btn-red" type="button" data-ok></button>
+      <button class="btn" type="button" data-cancel>Cancelar</button></div>`;
+    dialog.querySelector("h2").textContent = text;
+    dialog.querySelector("[data-ok]").textContent = okLabel;
+    document.body.appendChild(dialog);
+    const done = (value) => { dialog.close(); dialog.remove(); resolve(value); };
+    dialog.querySelector("[data-ok]").addEventListener("click", () => done(true));
+    dialog.querySelector("[data-cancel]").addEventListener("click", () => done(false));
+    dialog.addEventListener("cancel", (e) => { e.preventDefault(); done(false); }); // Escape
+    dialog.showModal();
+    dialog.querySelector("[data-cancel]").focus(); // lo seguro queda a mano
+  });
+}
 document.querySelectorAll("[data-confirm]").forEach((form) => {
-  form.addEventListener("submit", (e) => { if (!confirm(form.dataset.confirm)) e.preventDefault(); });
+  form.addEventListener("submit", async (e) => {
+    if (form.dataset.confirmed) return;
+    e.preventDefault();
+    if (await confirmDialog(form.dataset.confirm, form.dataset.confirmOk || "Confirmar")) {
+      form.dataset.confirmed = "1";
+      form.requestSubmit(e.submitter || undefined);
+    }
+  });
 });
 
 // Filtros del listado: se aplican apenas se elige una opción.

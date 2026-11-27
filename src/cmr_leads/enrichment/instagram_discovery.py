@@ -67,7 +67,9 @@ class BusinessDiscoveryClient:
             if code in RATE_LIMIT_CODES:
                 raise RateLimitedError(message)
             if code in AUTH_ERROR_CODES:
-                raise AuthError(message)
+                from cmr_leads.meta_token import explain_auth_error
+
+                raise AuthError(explain_auth_error(message))
             if code in NOT_FOUND_CODES or subcode in NOT_FOUND_SUBCODES:
                 return None
             raise InstagramApiError(f"[{code}/{subcode}] {message}")

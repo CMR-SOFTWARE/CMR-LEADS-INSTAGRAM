@@ -87,7 +87,9 @@ class AdsClient:
             code = error.get("code")
             message = error.get("error_user_msg") or error.get("message", "")
             if code in AUTH_ERROR_CODES:
-                raise AdsAuthError(f"El token de Meta no es válido o venció: {message}")
+                from cmr_leads.meta_token import explain_auth_error
+
+                raise AdsAuthError(explain_auth_error(error.get("message") or message))
             if code in PERMISSION_CODES:
                 raise AdsAuthError(f"Al token le faltan permisos (ads_read): {message}")
             retryable = code in RATE_LIMIT_CODES or code in TRANSIENT_CODES
