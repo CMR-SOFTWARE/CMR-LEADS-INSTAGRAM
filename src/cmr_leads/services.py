@@ -75,6 +75,18 @@ def mark_do_not_contact(session: Session, lead: Lead, note: str | None = None) -
     session.flush()
 
 
+DUPLICATE_CONTACT_MINUTES = 10
+
+
+def recent_contact(lead: Lead, channel: Channel, minutes: int = DUPLICATE_CONTACT_MINUTES):
+    """El envío del mismo canal hecho hace menos de `minutes` (doble clic, reintento), o None."""
+    since = utcnow() - timedelta(minutes=minutes)
+    for i in lead.interactions:
+        if i.direction == "outbound" and i.channel == channel and i.created_at >= since:
+            return i
+    return None
+
+
 def mark_contacted(
     session: Session,
     lead: Lead,

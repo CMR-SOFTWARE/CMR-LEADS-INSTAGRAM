@@ -390,3 +390,24 @@ def test_check_dms_without_config_explains_what_is_missing(client):
     r = client.post("/jornada/revisar-dms")
     assert "FACEBOOK_PAGE_ID" in _msg(r)
     assert "Revisar DMs de Instagram ahora" not in client.get("/jornada").text
+
+
+def test_contact_is_not_registered_twice(client):
+    lead_id = _add(client, name="Doble Clic", whatsapp="3364-555111")
+    client.post(f"/leads/{lead_id}/estado", data={"status": "approved"})
+    url = f"/leads/{lead_id}/contactado"
+    headers = {"X-Requested-With": "fetch"}
+    first = client.post(url, data={"channel": "whatsapp", "message": "Hola"}, headers=headers)
+    second = client.post(url, data={"channel": "whatsapp", "message": "Hola"}, headers=headers)
+    other = client.post(url, data={"channel": "instagram_dm", "message": "Hola"}, headers=headers)
+    assert (first.status_code, second.status_code, other.status_code) == (204, 200, 204)
+    outbound = [i for i in _lead(client, id=lead_id).interactions if i.direction == "outbound"]
+    assert sorted(i.channel for i in outbound) == ["instagram_dm", "whatsapp"]
+
+
+def test_open_buttons_wait_for_confirmation(client):
+    lead_id = _add(client, name="Pelu IG", whatsapp="3364-555222", instagram="pelu.ig")
+    client.post(f"/leads/{lead_id}/estado", data={"status": "approved"})
+    page = client.get(f"/leads/{lead_id}").text
+    assert 'data-channel="instagram_dm"' in page and 'data-channel="whatsapp"' in page
+    assert not _lead(client, id=lead_id).interactions  # abrir la ficha no registra nada

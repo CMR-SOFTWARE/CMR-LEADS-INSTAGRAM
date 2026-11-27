@@ -56,7 +56,7 @@
           <a class="btn btn-whatsapp" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" data-template="{{ draft.template }}" href="{{ wa_chat_link }}" target="_blank" rel="noopener" title="Abre el chat del negocio; el mensaje queda copiado para pegarlo">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
           {% endif %}
           {% if lead.instagram_username %}
-          <a class="btn btn-instagram" data-dm href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ icon("instagram") }} Copiar y abrir DM</a>
+          <a class="btn btn-instagram" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="instagram_dm" data-template="{{ draft.template }}" href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ icon("instagram") }} Copiar y abrir DM</a>
           {% endif %}
           <button class="btn" type="button" data-copy>📋 Copiar</button>
           <form method="post" action="/leads/{{ lead.id }}/mensaje-ia" style="display:inline">
@@ -67,7 +67,7 @@
         <form method="post" action="/leads/{{ lead.id }}/contactado" class="actions" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
           <input type="hidden" name="message" data-sent-message>
           <input type="hidden" name="template" value="{{ draft.template }}">
-          <span class="muted small">El botón de WhatsApp lo registra solo. ¿Lo mandaste por otro lado?</span>
+          <span class="muted small">Al volver de WhatsApp o Instagram te preguntamos si lo mandaste. ¿Lo mandaste por otro lado?</span>
           <select name="channel" style="width:auto">
             {% for key, label in CHANNEL_LABELS.items() %}<option value="{{ key }}" {{ 'selected' if key == draft.channel }}>{{ label }}</option>{% endfor %}
           </select>
