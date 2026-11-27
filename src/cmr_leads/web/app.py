@@ -714,11 +714,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         template: str = Form(""),
     ):
         from cmr_leads.sales.pipeline import register_contact
+        from cmr_leads.services import recent_contact
 
         is_fetch = request.headers.get("x-requested-with") == "fetch"
         with db() as (session, ws):
             try:
                 lead = get_lead(session, ws.id, lead_id)
+                if recent_contact(lead, channel):
+                    # Doble clic o reintento: ya quedó registrado, no se duplica.
+                    if is_fetch:
+                        return Response("Ya estaba registrado", status_code=200)
+                    return back(f"/leads/{lead_id}", "Ya estaba registrado hace un momento")
                 register_contact(
                     session,
                     lead,
