@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% from "_macros.html" import ic %}
+{% block title %}Hoja de ruta · CMR Lead Finder{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<div class="page-head no-print">
+  <div><h1>Hoja de ruta</h1><p>Poné de dónde salís y a dónde llegás: te armo el recorrido con los negocios con más chances de contratar para dejarles un folleto.</p></div>
+</div>
+
+<form method="get" action="/hoja-de-ruta" class="card no-print" data-route-form>
+  <div class="form-grid">
+    <div class="field">
+      <label for="salida">Salida</label>
+      <input id="salida" name="salida" type="text" value="{{ located.salida or form.salida }}" placeholder="Ej: Mitre 200, San Nicolás…" autocomplete="street-address">
+      <input type="hidden" name="salida_coords" value="{{ form.salida_coords }}" data-coords="salida">
+      <button class="btn btn-sm" type="button" data-my-location style="margin-top:6px">{{ ic("map") }} Usar mi ubicación</button>
+    </div>
+    <div class="field">
+      <label for="llegada">Llegada</label>
+      <input id="llegada" name="llegada" type="text" value="{{ located.llegada if form.llegada or form.llegada_coords else form.llegada }}" placeholder="Vacío: volvés a la salida…">
+      <input type="hidden" name="llegada_coords" value="{{ form.llegada_coords }}" data-coords="llegada">
+    </div>
+  </div>
+  <div class="form-grid route-options">
+    <div class="field">
+      <label for="modo">Cómo vas</label>
+      <select id="modo" name="modo">
+        {% for key, label in modes.items() %}<option value="{{ key }}" {{ 'selected' if key == form.modo }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="paradas">Cantidad de negocios</label>
+      <input id="paradas" name="paradas" type="number" inputmode="numeric" min="1" max="25" value="{{ form.paradas }}">
+    </div>
+    <div class="field">
+      <label for="desvio">Desvío máximo (km)</label>
+      <input id="desvio" name="desvio" type="number" inputmode="decimal" min="0.2" max="30" step="0.1" value="{{ form.desvio }}">
+    </div>
+    <div class="field">
+      <label for="chance_minima">Chance mínima (%)</label>
+      <input id="chance_minima" name="chance_minima" type="number" inputmode="numeric" min="0" max="100" value="{{ form.chance_minima }}">
+    </div>
+  </div>
+  <p class="muted small" style="margin:0 0 12px">También podés tocar el mapa: el primer toque marca la salida y el segundo la llegada. El desvío es cuánto más recorrés por pasar por el local; si volvés al mismo lugar, cuenta ida y vuelta.</p>
+  <button class="btn btn-primary" data-busy="Armando la ruta…">{{ ic("route") }} Armar ruta</button>
+</form>
+
+{% if error %}<div class="notice" role="alert" style="margin-top:16px">{{ error }}</div>{% endif %}
+
+{% if plan %}
+<div class="card route-summary" style="margin-top:16px">
+  <div>
+    <h2 style="margin:0">{{ stops|length }} {{ "negocio" if stops|length == 1 else "negocios" }} · {{ "%.1f"|format(plan.total_km) }} km en línea recta</h2>
+    <p class="muted small" style="margin:4px 0 0">{{ located.salida }} → {{ located.llegada }} · {{ plan.candidates }} {{ "candidato" if plan.candidates == 1 else "candidatos" }} cerca del camino, elegidos por chance de contratar.</p>
+  </div>
+  <div class="actions no-print">
+    {% for link in plan.maps_links %}
+    <a class="btn btn-primary" href="{{ link }}" target="_blank" rel="noopener">{{ ic("map") }} Abrir en Google Maps{% if plan.maps_links|length > 1 %} · tramo {{ loop.index }}{% endif %}</a>
+    {% endfor %}
+    <button class="btn" type="button" onclick="window.print()">Imprimir hoja</button>
+  </div>
+</div>
+
+{% if stops %}
+<div class="grid-2 route-layout" style="margin-top:16px">
+  <ol class="card route-stops">
+    <li class="route-endpoint"><strong>Salida</strong><span class="muted small">{{ located.salida }}</span></li>
+    {% for s in stops %}
+    <li>
+      <div class="route-stop-head">
+        <a href="/leads/{{ s.id }}"><strong>{{ s.name }}</strong></a>
+        <span class="chip {{ 'green' if s.chance >= 60 else ('amber' if s.chance >= 35 else '') }}">{{ s.chance }}% de chance</span>
+      </div>
+      <span class="small">{{ s.address or "Sin dirección cargada" }}</span>
+      <span class="muted small">{{ s.category }}{% if s.offer %} · Ofrecer: {{ s.offer }}{% endif %} · {{ s.status }}</span>
+    </li>
+    {% endfor %}
+    <li class="route-endpoint"><strong>Llegada</strong><span class="muted small">{{ located.llegada }}</span></li>
+  </ol>
+  <div id="route-map" class="card no-print"></div>
+</div>
+{% else %}
+<div class="card" style="margin-top:16px"><p class="muted" style="margin:0">No hay negocios con ubicación cerca de ese camino. Probá con más desvío, bajá la chance mínima o ubicá más locales desde Mapa.</p></div>
+{% endif %}
+{% else %}
+<div id="route-map" class="card no-print" style="margin-top:16px"></div>
+{% endif %}
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(() => {
+  const el = document.getElementById("route-map");
+  if (!el || !window.L) return;
+  const stops = {{ stops|tojson }};
+  const plan = {{ ({"start": plan.start, "end": plan.end} if plan else None)|tojson }};
+  const css = getComputedStyle(document.documentElement);
+  const color = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const blue = color("--cmr-azul", "blue"), navy = color("--cmr-navy", "navy"), green = color("--cmr-turquesa", "teal");
+  const map = L.map(el).setView([-33.33, -60.22], 13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const pin = (text, bg) => L.divIcon({ className: "route-pin", html: `<span style="background:${bg}">${text}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+
+  if (plan) {
+    const line = [plan.start, ...stops.map((s) => [s.lat, s.lng]), plan.end];
+    L.polyline(line, { color: blue, weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(map);
+    L.marker(plan.start, { icon: pin("S", green) }).bindPopup("Salida").addTo(map);
+    L.marker(plan.end, { icon: pin("L", navy) }).bindPopup("Llegada").addTo(map);
+    stops.forEach((s, i) => {
+      L.marker([s.lat, s.lng], { icon: pin(i + 1, blue) })
+        .bindPopup(`<strong>${esc(s.name)}</strong><br>${esc(s.address)}<br>${s.chance}% de chance<br><a href="${window.CMR_BASE || ""}/leads/${s.id}">Ver ficha</a>`)
+        .addTo(map);
+    });
+    map.fitBounds(line, { padding: [30, 30], maxZoom: 16 });
+  }
+
+  // Elegir salida y llegada tocando el mapa o con la ubicación del celu.
+  const form = document.querySelector("[data-route-form]");
+  const field = (key) => ({ text: form.querySelector(`#${key}`), coords: form.querySelector(`[data-coords="${key}"]`) });
+  const marks = {};
+  const setPoint = (key, lat, lng, label) => {
+    const f = field(key);
+    f.coords.value = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+    f.text.value = label;
+    marks[key]?.remove();
+    marks[key] = L.marker([lat, lng], { icon: pin(key === "salida" ? "S" : "L", key === "salida" ? green : navy) }).addTo(map);
+  };
+  ["salida", "llegada"].forEach((key) => field(key).text.addEventListener("input", () => { field(key).coords.value = ""; }));
+  let next = "salida";
+  map.on("click", (e) => {
+    setPoint(next, e.latlng.lat, e.latlng.lng, next === "salida" ? "Punto elegido en el mapa" : "Llegada elegida en el mapa");
+    next = next === "salida" ? "llegada" : "salida";
+  });
+  form.querySelector("[data-my-location]").addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    if (!navigator.geolocation) { toast("Este navegador no comparte la ubicación"); return; }
+    btn.disabled = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { btn.disabled = false; setPoint("salida", pos.coords.latitude, pos.coords.longitude, "Mi ubicación"); map.setView([pos.coords.latitude, pos.coords.longitude], 15); next = "llegada"; },
+      () => { btn.disabled = false; toast("No pude leer tu ubicación: escribí la dirección"); },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+})();
+</script>
+{% endblock %}

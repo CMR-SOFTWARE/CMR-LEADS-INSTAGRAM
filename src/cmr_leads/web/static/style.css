@@ -517,3 +517,23 @@ button.cal-chip:hover { filter: brightness(.95); outline: 1px solid currentColor
 .cal-dialog input, .cal-dialog select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--cmr-borde, #D8DEEA); font: inherit; font-weight: 400; }
 .cal-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .cal-error { color: #B42318; font-size: 13px; }
+
+/* Hoja de ruta */
+.route-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.route-summary { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.route-layout { align-items: start; }
+.route-stops { margin: 0; padding: 18px 18px 18px 42px; display: grid; gap: 12px; }
+.route-stops li { display: grid; gap: 2px; min-width: 0; }
+.route-stops .route-endpoint { list-style: none; margin-left: -24px; }
+.route-stop-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+#route-map { height: 520px; padding: 0; overflow: hidden; position: sticky; top: 16px; }
+.route-pin span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--cmr-blanco); font: 600 13px/1 Poppins, sans-serif; border: 2px solid var(--cmr-blanco); box-shadow: var(--sombra); }
+@media (max-width: 760px) {
+  .route-options { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #route-map { height: 360px; position: static; }
+}
+@media print {
+  .sidebar, .no-print, .toast-region { display: none !important; }
+  .route-layout { display: block; }
+  .card { box-shadow: none; border: 1px solid var(--cmr-gris-claro); }
+}

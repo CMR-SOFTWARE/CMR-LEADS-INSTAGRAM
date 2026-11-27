@@ -133,6 +133,16 @@ class GooglePlacesClient:
             raise PlacesApiError(message)
         return payload.get("places", []), payload.get("nextPageToken")
 
+    def geocode(self, address: str) -> tuple[float, float, str] | None:
+        """Ubicación de una dirección o lugar escrito a mano: (lat, lng, dirección de Google)."""
+        places, _ = self.search_text(address)
+        for place in places:
+            location = place.get("location") or {}
+            if "latitude" in location:
+                label = place.get("formattedAddress") or address
+                return location["latitude"], location["longitude"], label
+        return None
+
     def get_location(self, place_id: str) -> tuple[float, float] | None:
         response = self._http.get(
             DETAILS_URL.format(place_id=place_id),

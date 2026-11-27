@@ -390,3 +390,13 @@ def test_check_dms_without_config_explains_what_is_missing(client):
     r = client.post("/jornada/revisar-dms")
     assert "FACEBOOK_PAGE_ID" in _msg(r)
     assert "Revisar DMs de Instagram ahora" not in client.get("/jornada").text
+
+
+def test_route_sheet_page(client):
+    assert "Hoja de ruta" in client.get("/hoja-de-ruta").text
+    page = client.get(
+        "/hoja-de-ruta",
+        params={"salida_coords": "-33.335,-60.22", "salida": "Mi ubicación", "paradas": 5},
+    )
+    assert page.status_code == 200
+    assert "No hay negocios con ubicación cerca" in page.text
