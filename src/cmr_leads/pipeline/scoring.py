@@ -50,6 +50,9 @@ class NeedRules(BaseModel):
     sells_by_dm_keywords: list[str] = Field(default_factory=list)
     appointments_points: int = 10
     appointments_keywords: list[str] = Field(default_factory=list)
+    # Ya usa un sistema de turnos/web de otra empresa: resta puntos (es difícil que cambie).
+    competitor_system_points: int = -25
+    competitor_systems: dict[str, str] = Field(default_factory=dict)  # texto a buscar -> nombre
 
 
 class ReachRules(BaseModel):
@@ -167,6 +170,7 @@ class ScoringInput:
     has_website: bool = False
     link_in_bio_only: bool = False
     website_signals: dict[str, Any] | None = None
+    website: str | None = None
     phone_e164: str | None = None
     whatsapp_e164: str | None = None
     whatsapp_confirmed: bool = False
@@ -185,6 +189,7 @@ class ScoringInput:
             has_website=bool(lead.website) and not lead.has_link_in_bio_only,
             link_in_bio_only=lead.has_link_in_bio_only,
             website_signals=(lead.raw_data or {}).get("website"),
+            website=lead.website,
             phone_e164=lead.phone_e164,
             whatsapp_e164=lead.whatsapp_e164,
             whatsapp_confirmed=lead.whatsapp_confirmed,
@@ -205,6 +210,7 @@ class ScoreResult:
     is_local: bool = False
     business_type: str | None = None
     recommended_service: str | None = None
+    competitor_system: str | None = None
     breakdown: list[dict[str, Any]] = field(default_factory=list)
 
     def add(self, rule: str, points: int, reason: str) -> None:
@@ -222,6 +228,22 @@ def _contains_any(text: str, keywords: list[str]) -> str | None:
         kw = normalize_text(keyword)
         if kw and re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", text):
             return keyword
+    return None
+
+
+def detect_competitor_system(data: "ScoringInput", systems: dict[str, str]) -> str | None:
+    """Nombre del sistema de otra empresa que usa (AgendaPro, Fresha…), mirando su web, los
+    links y el texto de la web y la bio. None si no se ve ninguno."""
+    signals = data.website_signals or {}
+    blob = " ".join(
+        filter(
+            None,
+            [data.website, data.bio, signals.get("text"), " ".join(signals.get("links") or [])],
+        )
+    ).lower()
+    for needle, name in systems.items():
+        if needle.lower() in blob:
+            return name
     return None
 
 
@@ -330,6 +352,15 @@ def score(data: ScoringInput, config: ScoringConfig) -> ScoreResult:
             need.appointments_points,
             f"maneja turnos/reservas ('{appointments}')",
         )
+
+    competitor = detect_competitor_system(data, need.competitor_systems)
+    if competitor:
+        result.add(
+            "need.competitor_system_points",
+            need.competitor_system_points,
+            f"ya tiene sistema ({competitor})",
+        )
+        result.competitor_system = competitor
 
     # --- REACH ---
     reach = config.reach

@@ -17,6 +17,8 @@
         {% if g.rating %}<span class="chip">⭐ {{ g.rating }} ({{ g.reviews or 0 }} reseñas)</span>{% endif %}
         {% if lead.followers %}<span class="chip">{{ "{:,}".format(lead.followers).replace(",", ".") }} seguidores</span>{% endif %}
         {% if lead.recommended_service and not lead.excluded %}<span class="chip accent">Ofrecer: {{ (lead.raw_data or {}).get("ai_offer", {}).get("offer") or SERVICE_LABELS.get(lead.recommended_service) }}</span>{% endif %}
+        {% set system = (lead.score_breakdown or [])|selectattr("rule", "equalto", "need.competitor_system_points")|first %}
+        {% if system %}<span class="chip amber" title="Se vio en su web, sus links o su bio">{{ system.reason|replace("ya tiene sistema (", "Ya tiene sistema: ")|replace(")", "") }}</span>{% endif %}
         {% if lead.enrichment_state == "pending" %}<span class="chip amber">Sin datos de Instagram aún</span>{% endif %}
       </div>
     </div>
@@ -48,6 +50,10 @@
       {% if lead.do_not_contact %}
         <p class="muted">Este lead pidió no ser contactado.</p>
       {% elif draft %}
+        {% set sent = lead.interactions|selectattr("direction", "equalto", "outbound")|list %}
+        {% if sent %}{% set last = sent|sort(attribute="created_at")|last %}
+        <div class="notice" role="status" style="margin:0 0 12px">Ya le escribiste {{ "1 vez" if sent|length == 1 else sent|length ~ " veces" }}: la última el {{ last.created_at|date }} por {{ CHANNEL_LABELS.get(last.channel, last.channel) }}. Revisá el historial antes de mandar otro.</div>
+        {% endif %}
         <textarea>{{ draft.text }}</textarea>
         <div class="actions" style="margin-top:12px">
           {% if lead.whatsapp_e164 %}

@@ -150,6 +150,19 @@ need:
     - agenda
     - agendate
     - sacá tu turno
+  # Ya usa el sistema de otra empresa (se busca en su web, links y bio). Resta puntos.
+  competitor_system_points: -25
+  competitor_systems:
+    agendapro: AgendaPro
+    fresha: Fresha
+    weibook: Weibook
+    calendly: Calendly
+    tactoweb: Tacto Web
+    tacto web: Tacto Web
+    booksy: Booksy
+    setmore: Setmore
+    simplybook: SimplyBook
+    reservo.cl: Reservo
 
 # --- REACH ---
 reach:

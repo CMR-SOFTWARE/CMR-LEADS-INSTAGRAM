@@ -52,7 +52,7 @@
         {% set i = insights[rule] %}
         <tr>
           <td>{{ RULE_LABELS[rule] }}{% if i.samples %}<div class="muted small">{{ i.positives }}/{{ i.samples }} buenos</div>{% endif %}</td>
-          <td><input type="number" name="{{ rule }}" value="{{ i.weight }}" min="0" max="100"></td>
+          <td><input type="number" name="{{ rule }}" value="{{ i.weight }}" min="-100" max="100"></td>
         </tr>
         {% endfor %}
       </table>

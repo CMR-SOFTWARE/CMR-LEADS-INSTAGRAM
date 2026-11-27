@@ -41,6 +41,7 @@ RULE_LABELS = {
     "need.website_not_mobile": "Sitio no apto celular",
     "need.sells_by_dm_points": "Vende o toma pedidos por mensaje",
     "need.appointments_points": "Trabaja con turnos / reservas",
+    "need.competitor_system_points": "Ya tiene sistema de otra empresa",
     "reach.whatsapp_confirmed": "WhatsApp publicado",
     "reach.phone": "Teléfono publicado",
     "reach.email": "Email publicado",
@@ -169,7 +170,8 @@ def analyze(leads: list[Lead], config: ScoringConfig) -> LearningReport:
                 if insight.lift >= LIFT_THRESHOLD:
                     insight.suggested_weight = min(insight.weight + STEP, MAX_WEIGHT)
                 elif insight.lift <= -LIFT_THRESHOLD:
-                    insight.suggested_weight = max(insight.weight - STEP, 0)
+                    floor = -MAX_WEIGHT if insight.weight < 0 else 0  # los que restan pueden restar más
+                    insight.suggested_weight = max(insight.weight - STEP, floor)
                 if insight.suggested_weight == insight.weight:
                     insight.suggested_weight = None
         report.insights.append(insight)
