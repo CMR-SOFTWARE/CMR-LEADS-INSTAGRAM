@@ -85,6 +85,17 @@ MAP_GROUPS = (
 MAX_LOCATION_LOOKUPS_PER_MONTH = 3000
 
 
+def _parse_coords(value: str) -> tuple[float, float] | None:
+    """'lat,lng' que manda el navegador (mi ubicación o clic en el mapa)."""
+    try:
+        lat, lng = (float(x) for x in value.split(","))
+    except ValueError:
+        return None
+    if -90 <= lat <= 90 and -180 <= lng <= 180:
+        return lat, lng
+    return None
+
+
 def _map_group(lead: Lead) -> str:
     if lead.excluded or lead.do_not_contact:
         return "descartado"
@@ -1177,6 +1188,120 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ],
                 google_configured=settings.google_places_configured,
             )
+
+    @app.get("/hoja-de-ruta", response_class=HTMLResponse)
+    def route_sheet(
+        request: Request,
+        salida: str = "",
+        llegada: str = "",
+        salida_coords: str = "",
+        llegada_coords: str = "",
+        paradas: int = 10,
+        desvio: float = 2.0,
+        modo: str = "walking",
+        chance_minima: int = 0,
+    ):
+        from cmr_leads.sales.route import MAX_STOPS, TRAVEL_MODES, plan_route
+
+        form = {
+            "salida": salida,
+            "llegada": llegada,
+            "salida_coords": salida_coords,
+            "llegada_coords": llegada_coords,
+            "paradas": max(1, min(paradas, MAX_STOPS)),
+            "desvio": max(0.2, min(desvio, 30.0)),
+            "modo": modo if modo in TRAVEL_MODES else "walking",
+            "chance_minima": max(0, min(chance_minima, 100)),
+        }
+        error = None
+        plan = None
+        located: dict[str, str] = {}
+        if salida or salida_coords:
+            points = {}
+            for key in ("salida", "llegada"):
+                text, coords = form[key], form[f"{key}_coords"]
+                if key == "llegada" and not (text or coords):
+                    points[key] = points["salida"]  # sin llegada: vuelve a la salida
+                    located[key] = located.get("salida", "")
+                    continue
+                point = _parse_coords(coords)
+                if point:
+                    points[key] = point
+                    located[key] = text or "Tu ubicación"
+                    continue
+                if not settings.google_places_configured:
+                    error = "Para buscar direcciones falta GOOGLE_PLACES_API_KEY. Usá tu ubicación o tocá el mapa."
+                    break
+                from cmr_leads.sources.google_places import GooglePlacesClient, PlacesApiError
+
+                try:
+                    found = GooglePlacesClient(settings.google_places_api_key).geocode(text)
+                except PlacesApiError as exc:
+                    error = f"Google no pudo buscar la dirección: {exc}"
+                    break
+                if not found:
+                    error = f'No encontré "{text}". Probá agregando la ciudad.'
+                    break
+                points[key] = found[:2]
+                located[key] = found[2]
+            if not error:
+                with db() as (session, ws):
+                    leads = list(
+                        session.scalars(
+                            select(Lead).where(
+                                Lead.workspace_id == ws.id,
+                                Lead.latitude.is_not(None),
+                                Lead.longitude.is_not(None),
+                            )
+                        )
+                    )
+                    plan = plan_route(
+                        leads,
+                        points["salida"],
+                        points["llegada"],
+                        max_stops=form["paradas"],
+                        max_detour_km=form["desvio"],
+                        mode=form["modo"],
+                        min_chance=form["chance_minima"],
+                    )
+                    stops = [
+                        {
+                            "id": s.lead.id,
+                            "name": s.lead.label,
+                            "address": s.lead.address or "",
+                            "category": s.lead.category or s.lead.business_type or "",
+                            "offer": ((s.lead.raw_data or {}).get("ai_offer") or {}).get("offer")
+                            or SERVICE_LABELS.get(s.lead.recommended_service or "", ""),
+                            "status": STATUS_LABELS.get(s.lead.status, s.lead.status),
+                            "chance": s.chance,
+                            "detour": s.detour_km,
+                            "lat": s.lead.latitude,
+                            "lng": s.lead.longitude,
+                        }
+                        for s in plan.stops
+                    ]
+                    return render(
+                        request,
+                        "route.html",
+                        active="route",
+                        form=form,
+                        modes=TRAVEL_MODES,
+                        plan=plan,
+                        stops=stops,
+                        located=located,
+                        error=None,
+                    )
+        return render(
+            request,
+            "route.html",
+            active="route",
+            form=form,
+            modes=TRAVEL_MODES,
+            plan=None,
+            stops=[],
+            located=located,
+            error=error,
+        )
 
     @app.post("/mapa/ubicar")
     def lead_map_locate():
