@@ -1,7 +1,6 @@
 """Genera un BORRADOR de mensaje para revisión humana. Nunca envía nada."""
 
 import re
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -110,33 +109,119 @@ def _load_yaml_templates(path) -> dict:
         return {}
 
 
-def render_from_config(lead: Lead, settings: Settings) -> tuple[str, str] | None:
-    """Plantilla de config/plantillas.yaml por plan + rubro. None si no hay archivo."""
-    config = _load_yaml_templates(settings.templates_path)
-    planes = config.get("planes") or {}
-    if not planes:
-        return None
-    plan = lead.recommended_service or "generico"
-    by_rubro = (config.get("rubros") or {}).get(plan) or {}
-    template = by_rubro.get(lead.business_type or "") or planes.get(plan) or planes.get("generico")
-    if not template:
-        return None
-    problems = config.get("problemas") or {}
-    key = detect_problem(lead)
-    values = {
-        "nombre": lead.display_name or "su negocio",
-        "rubro": BUSINESS_TYPE_LABELS.get(lead.business_type or "", "su rubro"),
-        "problema_detectado": problems.get(key) or problems.get("generico", ""),
-        "empresa": settings.company_name,
-        "ciudad": settings.company_city,
-    }
+# Profesionales que trabajan solos: se les habla de vos, no de "ustedes".
+_INDIVIDUAL = re.compile(
+    r"\b(lic|licenciad[ao]|dra|dr|psic|psicolog[ao]|psicopedagog[ao]|kinesiolog[ao]|"
+    r"nutricionista|odontolog[ao]|fonoaudiolog[ao]|podolog[ao]|cosmiatra|cosmetolog[ao]|"
+    r"terapeuta|abogad[ao]|contador[a]?|arq|arquitect[ao])\b"
+)
+_ALTERNATIVE = re.compile(r"\{([^{}|]*)\|([^{}|]*)\}")
+MAX_WORDS = 45
+
+
+def is_individual(lead: Lead) -> bool:
+    from cmr_leads.pipeline.normalize import normalize_text
+
+    return bool(_INDIVIDUAL.search(normalize_text(lead.display_name)))
+
+
+def apply_style(text: str) -> str:
+    """Reglas de estilo de CMR: preguntas solo con "?" (sin "¿" ni "¡") y espacios prolijos."""
+    text = text.replace("¿", "").replace("¡", "")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" +([?!.,:;])", r"\1", text)
+    return text.strip()
+
+
+def word_count(text: str) -> int:
+    return len(text.split())
+
+
+def template_key(lead: Lead) -> str:
+    """Qué plantilla base le toca según rubro y servicio (ver config/plantillas.yaml)."""
+    service = lead.recommended_service or ""
+    rubro = lead.business_type or ""
+    if service == "cmr_canchas":
+        return "canchas"
+    if rubro in ("estetica", "salud", "gastronomia"):
+        return rubro
+    if rubro == "deportes":
+        return "gimnasio"
+    if service in ("cmr_nexo", "sistema_turnos"):
+        return "turnos"
+    if service == "mejora_web":
+        return "mejora_web"
+    if not lead.website or lead.has_link_in_bio_only:
+        return "comercio_sin_web"
+    return "generico"
+
+
+def _fill(template: str, lead: Lead, firma: str) -> str:
+    singular = is_individual(lead)
+    text = " ".join(template.split())
+    text = _ALTERNATIVE.sub(lambda m: m.group(2 if singular else 1), text)
 
     class _Safe(dict):
         def __missing__(self, k):  # una variable mal escrita no rompe el mensaje
             return "{" + k + "}"
 
-    name = f"{plan}/{lead.business_type}" if lead.business_type in by_rubro else plan
-    return " ".join(template.split()).format_map(_Safe(values)), name
+    values = {"firma": firma, "nombre": lead.display_name or "su negocio"}
+    return apply_style(text.format_map(_Safe(values)))
+
+
+def _variant(lead: Lead, options: dict) -> tuple[str, str]:
+    """A/B: a cada lead le toca siempre la misma versión (según su número)."""
+    keys = sorted(str(k) for k in options)
+    key = keys[(lead.id or 0) % len(keys)]
+    return key, options.get(key) or options.get(int(key) if key.isdigit() else key)
+
+
+def render_from_config(lead: Lead, settings: Settings) -> tuple[str, str] | None:
+    """Plantilla de config/plantillas.yaml por rubro, con versión A/B. None si no hay archivo."""
+    config = _load_yaml_templates(settings.templates_path)
+    plantillas = config.get("plantillas") or {}
+    if not plantillas:
+        return None
+    key = template_key(lead)
+    options = plantillas.get(key) or plantillas.get("generico")
+    if not options:
+        return None
+    if key not in plantillas:
+        key = "generico"
+    if isinstance(options, str):
+        options = {"a": options}
+    variant, template = _variant(lead, options)
+    firma = config.get("firma") or f"{settings.sender_name} de {settings.company_name}"
+    return _fill(template, lead, firma), f"{key}/{variant}"
+
+
+TEMPLATE_LABELS = {
+    "estetica": "Estética",
+    "gimnasio": "Gimnasio / pilates",
+    "salud": "Salud",
+    "gastronomia": "Gastronomía",
+    "canchas": "Canchas",
+    "comercio_sin_web": "Comercio sin web",
+    "turnos": "Turnos",
+    "mejora_web": "Renovar web",
+    "generico": "Genérico",
+    "seguimiento": "Seguimiento",
+}
+
+
+def template_label(name: str | None) -> str:
+    """'estetica/a' → 'Estética · versión A' (para las estadísticas de respuestas)."""
+    if not name:
+        return "sin registrar"
+    if name == "ia":
+        return "Redactado con IA"
+    key, _, variant = name.partition("/")
+    if key not in TEMPLATE_LABELS:
+        return f"{name} (anterior)"  # plantillas viejas, de antes del A/B
+    label = TEMPLATE_LABELS[key]
+    if key == "seguimiento":
+        return f"{label} {variant}"
+    return f"{label} · versión {variant.upper()}" if variant else label
 
 
 def follow_up_message(lead: Lead, settings: Settings, number: int) -> str:
@@ -145,14 +230,10 @@ def follow_up_message(lead: Lead, settings: Settings, number: int) -> str:
     texts = config.get("seguimientos") or {}
     template = texts.get(number) or texts.get(str(number)) or texts.get(1) or ""
     if not template:
-        return f"Hola, ¿cómo andan? Les escribí hace unos días por {lead.display_name or 'su negocio'}."
-    values = {
-        "nombre": lead.display_name or "su negocio",
-        "rubro": BUSINESS_TYPE_LABELS.get(lead.business_type or "", "su rubro"),
-        "empresa": settings.company_name,
-        "ciudad": settings.company_city,
-    }
-    return " ".join(template.split()).format_map(defaultdict(str, values))
+        name = lead.display_name or "su negocio"
+        return f"Hola, cómo andan? Les escribí hace unos días por {name}."
+    firma = config.get("firma") or f"{settings.sender_name} de {settings.company_name}"
+    return _fill(template, lead, firma)
 
 
 def generate_message(lead: Lead, settings: Settings) -> MessageDraft:
@@ -162,6 +243,7 @@ def generate_message(lead: Lead, settings: Settings) -> MessageDraft:
     else:
         template_name = SERVICE_TEMPLATES.get(lead.recommended_service or "", DEFAULT_TEMPLATE)
         text = _clean(_env.get_template(template_name).render(**build_context(lead, settings)))
+        text = apply_style(text)
     if lead.whatsapp_e164:
         return MessageDraft(
             text, Channel.WHATSAPP, whatsapp_link(lead.whatsapp_e164, text), template_name

@@ -99,7 +99,7 @@ def test_write_message_calls_gemini_and_skips_thoughts():
         )
 
     text = write_message(_gym(), _settings(), httpx.Client(transport=httpx.MockTransport(handler)))
-    assert text == "Hola, ¿cómo andan? Soy Tomás."
+    assert text == "Hola, cómo andan? Soy Tomás."  # sin "¿" (regla de estilo de CMR)
     assert seen["key"] == "test-key"
     assert "gemini-" in seen["url"]
     assert "Gimnasio IronMan" in seen["body"]["contents"][0]["parts"][0]["text"]

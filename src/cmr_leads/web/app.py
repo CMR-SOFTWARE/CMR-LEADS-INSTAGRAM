@@ -25,7 +25,7 @@ from cmr_leads.db.session import get_or_create_workspace, make_engine, make_sess
 from cmr_leads.domain.enums import Channel, EnrichmentState, LeadStatus, Priority, SourceType
 from cmr_leads.domain.schemas import RawProfile, SourceRecord
 from cmr_leads.exports.exporter import export_csv, export_xlsx
-from cmr_leads.messaging.generator import generate_message
+from cmr_leads.messaging.generator import MAX_WORDS, generate_message, template_label
 from cmr_leads.pipeline.dedup import find_possible_duplicates
 from cmr_leads.pipeline.ingest import ingest
 from cmr_leads.pipeline.learning import (
@@ -287,6 +287,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         LeadStatus=LeadStatus,
         Priority=Priority,
         company=settings.company_name,
+        template_label=template_label,
+        MAX_WORDS=MAX_WORDS,
         # Cambia cuando se actualizan los estáticos, para que el navegador no use una copia vieja.
         asset_version=max(int(f.stat().st_mtime) for f in (WEB_DIR / "static").iterdir()),
     )
@@ -622,7 +624,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if lead.status in CONTACTABLE_STATUSES and not lead.do_not_contact:
                 draft = generate_message(lead, settings)
                 if ai_text := (lead.raw_data or {}).get("ai_message"):
-                    draft = replace(draft, text=ai_text)
+                    draft = replace(draft, text=ai_text, template="ia")
             config = scoring_config()
             return render(
                 request,
@@ -854,14 +856,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             queue = journey_.queues.get(step) or [] if step else []
             item = queue[0] if queue else None
             lead = getattr(item, "lead", item)
-            message = None
+            message = message_template = None
             if lead is not None and step == "enviar":
-                message = (lead.raw_data or {}).get("ai_message") or generate_message(
-                    lead, settings
-                ).text
+                if ai_text := (lead.raw_data or {}).get("ai_message"):
+                    message, message_template = ai_text, "ia"
+                else:
+                    draft_ = generate_message(lead, settings)
+                    message, message_template = draft_.text, draft_.template
             elif lead is not None and step == "seguimiento":
                 sent = sum(1 for i in lead.interactions if i.direction == "outbound")
-                message = follow_up_message(lead, settings, min(sent, 2))
+                number = min(sent, 2) or 1
+                message = follow_up_message(lead, settings, number)
+                message_template = f"seguimiento/{number}"
             today = now.date().isoformat()
             touched = [
                 lead_
@@ -879,6 +885,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 item=item,
                 lead=lead,
                 message=message,
+                message_template=message_template,
                 skip=",".join(str(i) for i in sorted(skipped)),
                 touched=touched,
                 today=today,
