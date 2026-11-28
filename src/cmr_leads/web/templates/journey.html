@@ -76,12 +76,12 @@
     <textarea id="msg">{{ message }}</textarea>
     <div class="actions" style="margin-top:12px">
       {% if lead.whatsapp_e164 %}
-      <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
+      <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" data-register="/leads/{{ lead.id }}/contactado" data-template="{{ message_template or '' }}" data-channel="whatsapp" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>
       {% elif wa_url %}
-      <a class="btn btn-whatsapp" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" href="{{ wa_url }}" target="_blank" rel="noopener">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
+      <a class="btn btn-whatsapp" data-dm data-register="/leads/{{ lead.id }}/contactado" data-template="{{ message_template or '' }}" data-channel="whatsapp" href="{{ wa_url }}" target="_blank" rel="noopener">{{ icon("whatsapp") }} Copiar y abrir WhatsApp</a>
       {% endif %}
       {% if lead.instagram_username %}
-      <a class="btn btn-instagram" data-dm data-register="/leads/{{ lead.id }}/contactado" data-channel="instagram_dm" href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ ic("instagram") }} Copiar y abrir DM</a>
+      <a class="btn btn-instagram" data-dm data-register="/leads/{{ lead.id }}/contactado" data-template="{{ message_template or '' }}" data-channel="instagram_dm" href="https://ig.me/m/{{ lead.instagram_username }}" target="_blank" rel="noopener">{{ ic("instagram") }} Copiar y abrir DM</a>
       {% endif %}
       <button class="btn" type="button" data-copy>{{ ic("copy") }} Copiar</button>
     </div>

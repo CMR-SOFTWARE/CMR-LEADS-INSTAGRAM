@@ -5,6 +5,7 @@ import re
 import httpx
 
 from cmr_leads.db.models import Lead
+from cmr_leads.messaging.generator import apply_style, is_individual
 from cmr_leads.settings import Settings
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -36,8 +37,8 @@ SERVICES = {
 }
 
 SYSTEM_PROMPT = """\
-Escribís el PRIMER mensaje de WhatsApp que alguien de {company}, una empresa de software de \
-{city}, le manda a un negocio local que no lo conoce.
+Escribís el PRIMER mensaje de WhatsApp que Tomi, de {company} ({city}), le manda a un negocio \
+local que no lo conoce.
 
 Esto es lo que vendemos (usalo para elegir qué ofrecer y cómo contarlo):
 <catalogo>
@@ -45,33 +46,31 @@ Esto es lo que vendemos (usalo para elegir qué ofrecer y cómo contarlo):
 </catalogo>
 
 Tiene que sonar como un vecino que les escribe desde el celular, no como una empresa ni una IA:
-- Español rioplatense y bien coloquial, tratando al negocio de "ustedes".
-- Entre 3 y 4 oraciones, máximo 70 palabras.
-- Saludo corto y natural. NO digas tu nombre ni "soy de…": a lo sumo "les escribo de {company}, \
-acá de {city}" o directamente entrá en tema.
-- Si la ficha trae "Qué ofrecerle (ya analizado)", el mensaje se arma sobre ESE análisis: \
-ofrecé ese producto (no cambies a otro) y apoyate en el "Por qué": usá el dato concreto de su \
-negocio que lo justifica (su trayectoria, que todo pasa por un Linktree, que no tienen web, etc.) \
-y contá en concreto qué ganarían ellos con eso en el día a día (más clientes que los encuentran, \
-consultas directas por WhatsApp, menos tiempo respondiendo, etc.).
-- Si no hay análisis, mencioná UNA observación concreta de la ficha y ofrecé UN solo producto del \
-catálogo, el que más le sirva según su rubro (la ficha trae una sugerencia).
-- Si ofrecés el Plan Web, no prometas catálogo de productos, tienda ni carga de precios: eso es \
-del Plan Gestión. Con el Plan Web hablá de que los encuentren en Google, vean quiénes son y les \
-escriban por WhatsApp.
-- Nombrá el producto si es CMR Nexo o CMR Canchas. Hablá de su rubro con sus palabras (una óptica \
-habla de anteojos y clientes, una peluquería de turnos), no en abstracto.
-- Si en "Clientes" del catálogo hay uno del mismo rubro, podés nombrarlo como ejemplo. Si no hay, \
-no nombres ninguno.
-- No pongas precios, links ni teléfonos. Para CMR Nexo podés mencionar la promo de lanzamiento.
-- Cerrá con una pregunta corta y sin presión.
-- Prohibido: emojis, listas, comillas, hashtags, firmas, "espero que estés bien", "potenciar", \
-"llevar al siguiente nivel", "solución integral", "transformación digital", "presencia digital", \
-"no dudes en", "me encantaría".
-- Nunca menciones estrellas, calificaciones ni reseñas de Google.
-- No inventes nada que no esté en la ficha o el catálogo (ni seguidores, ni actividad en redes). \
-No elogies cosas que no figuren en la ficha y no afirmes que no tienen turnos online, tienda o \
-reservas si la ficha no lo dice.
+- Presentate al principio así: "Soy Tomi de CMR, de acá de San Nicolás".
+- Máximo 45 palabras en total. Español rioplatense y coloquial.
+- Tratá al negocio de "ustedes". Si la ficha dice que es un profesional que trabaja solo \
+(Lic., Dra., psicóloga, kinesiólogo…), hablale de vos y en singular.
+- Las preguntas van solo con "?" al final. Nunca uses "¿" ni "¡".
+- NO afirmes nada que no esté 100% verificado. Lo que dice la ficha sobre su web, su bio o el \
+análisis sirve para elegir qué preguntar, no para afirmarlo: en vez de "vi que todo pasa por el \
+link de la bio" o "vi que toman los turnos por mensaje", preguntalo ("Los turnos los toman por \
+WhatsApp?").
+- Preguntá por cosas de SU rubro: turnos solo a negocios con turnos o clases (estética, salud, \
+gimnasios, pilates); pedidos a gastronomía y comercios; reservas a canchas. Nunca le hables de \
+turnos a un restaurante.
+- Ofrecé UN solo producto: si la ficha trae "Qué ofrecerle (ya analizado)", ese; si no, el que \
+sugiere la ficha. Nombralo si es CMR Nexo o CMR Canchas.
+- Si ofrecés el Plan Web, no prometas catálogo, tienda ni carga de precios (eso es Plan Gestión).
+- Usá un caso real de "Clientes" del catálogo cuando encaje (Canito Skin para turnos, Automóvil \
+Club San Nicolás para canchas, Ferretería González para comercios, Planeta Surf para tienda \
+online). Contá solo lo que dice el catálogo de ese cliente: no inventes clientes ni resultados.
+- Cerrá con una pregunta fácil de contestar ("Les muestro cómo funciona?").
+- No pongas precios, links ni teléfonos. No menciones promociones ni "promo de lanzamiento". No \
+prometas videos, demos grabadas ni plazos.
+- Prohibido: emojis, listas, comillas, hashtags, firmas al final, "espero que estés bien", \
+"potenciar", "llevar al siguiente nivel", "solución integral", "transformación digital", \
+"presencia digital", "no dudes en", "me encantaría".
+- Nunca menciones estrellas, calificaciones, reseñas ni seguidores.
 
 Respondé SOLO con el texto del mensaje."""
 
@@ -139,6 +138,8 @@ def build_lead_facts(lead: Lead, include_offer: bool = True) -> str:
             facts.append(f"Por qué le sirve (ya analizado): {ai_offer['reason']}")
     elif service := SERVICES.get(lead.recommended_service or ""):
         facts.append(f"Lo que más le serviría (según nuestro análisis): {service}")
+    if is_individual(lead):
+        facts.append("Trato: es un profesional que trabaja solo, hablale de vos y en singular.")
     return "\n".join(facts)
 
 
@@ -203,8 +204,8 @@ def write_message(lead: Lead, settings: Settings, http: httpx.Client | None = No
     system = SYSTEM_PROMPT.format(
         company=settings.company_name, city=settings.company_city, catalog=load_catalog(settings)
     )
-    text = generate(settings, system, build_lead_facts(lead), {"temperature": 0.9}, http)
-    return _clean(text)
+    text = generate(settings, system, build_lead_facts(lead), {"temperature": 0.8}, http)
+    return apply_style(_clean(text))
 
 
 OFFER_PROMPT = """\

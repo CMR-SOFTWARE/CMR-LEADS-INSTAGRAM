@@ -43,13 +43,14 @@
       <tr><th>{{ label }}</th><th>Contact.</th><th>Resp.</th><th>Interes.</th></tr>
       {% for key, b in rows[:8] %}
       <tr>
-        <td>{{ SERVICE_LABELS.get(key) or SOURCE_LABELS.get(key) or CHANNEL_LABELS.get(key) or key }}</td>
+        <td>{{ template_label(key) if label == 'Mensaje' else (SERVICE_LABELS.get(key) or SOURCE_LABELS.get(key) or CHANNEL_LABELS.get(key) or key) }}</td>
         <td>{{ b.contacted }}</td>
         <td>{{ b.reply_rate|pct }}</td>
         <td><strong>{{ b.positive_rate|pct }}</strong></td>
       </tr>
       {% else %}<tr><td colspan="4" class="muted">Sin datos.</td></tr>{% endfor %}
     </table>
+    {% if label == 'Mensaje' %}<p class="muted small">Cada plantilla tiene versión A y B. Esperá a tener unos 20 envíos de cada una antes de quedarte con la que más responde.</p>{% endif %}
   </div>
   {% endfor %}
 </div>

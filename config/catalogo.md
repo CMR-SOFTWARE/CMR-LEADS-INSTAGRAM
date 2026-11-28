@@ -44,7 +44,7 @@ Dejá de agendar por WhatsApp.
 - Estadísticas
 - Historial de clientes
 
-Planes (promo de lanzamiento 50% OFF):
+Planes (promo de lanzamiento 50% OFF; no mencionarla en el primer mensaje):
 - Inicial: $10.000/mes (antes $20.000), 1 profesional
 - Profesional: $17.500/mes (antes $35.000), hasta 3 profesionales
 - Max: $30.000/mes (antes $60.000), profesionales ilimitados
@@ -75,7 +75,7 @@ Proyectos únicos: 50% de seña y 50% al entregar.
 ## Clientes
 
 - Ferretería González Hnos (comercio / ferretería)
-- Automóvil Club San Nicolás (automotor)
+- Automóvil Club San Nicolás (sistema de reservas de canchas)
 - Wanted 3D (impresión 3D)
 - Canito Skin (estética: turnos online + tienda)
 - Unidad Sanitaria N°3 (salud)

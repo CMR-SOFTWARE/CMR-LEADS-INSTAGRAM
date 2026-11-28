@@ -55,6 +55,7 @@
         <div class="notice" role="status" style="margin:0 0 12px">Ya le escribiste {{ "1 vez" if sent|length == 1 else sent|length ~ " veces" }}: la última el {{ last.created_at|date }} por {{ CHANNEL_LABELS.get(last.channel, last.channel) }}. Revisá el historial antes de mandar otro.</div>
         {% endif %}
         <textarea>{{ draft.text }}</textarea>
+        {% set words = draft.text.split()|length %}<p class="muted small">Plantilla: {{ template_label(draft.template) }} · {{ words }} palabras{% if words > MAX_WORDS %} <span class="chip amber">Largo: dejalo en {{ MAX_WORDS }} palabras o menos</span>{% endif %}</p>
         <div class="actions" style="margin-top:12px">
           {% if lead.whatsapp_e164 %}
           <a class="btn btn-whatsapp" data-wa="{{ lead.whatsapp_e164.lstrip('+') }}" data-register="/leads/{{ lead.id }}/contactado" data-channel="whatsapp" data-template="{{ draft.template }}" href="#" target="_blank" rel="noopener">{{ icon("whatsapp") }} Abrir en WhatsApp</a>

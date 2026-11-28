@@ -1,69 +1,116 @@
-# Plantillas del primer mensaje (se usan cuando no hay borrador de Gemini o si Gemini falla).
-# Variables: {nombre} {rubro} {problema_detectado} {empresa} {ciudad}
-# Primero se busca plan + rubro (rubros:), si no, la del plan (planes:), si no, "generico".
-# Rubros posibles: estetica, salud, deportes, gastronomia, indumentaria, comercio, profesional,
-# inmobiliaria, automotor, educacion, eventos.
+# Plantillas del primer mensaje (se usan cuando no hay borrador de IA).
+#
+# Reglas (también las sigue la IA):
+# - Presentarse como {firma}. Máximo ~45 palabras.
+# - Preguntas solo con "?" al final (nunca "¿" ni "¡").
+# - No afirmar nada que no esté verificado: si no es seguro, preguntarlo
+#   ("Los turnos los toman por WhatsApp?").
+# - Sin videos y sin "promo de lanzamiento" en el primer contacto.
+# - Casos reales (Canito Skin, Automóvil Club San Nicolás, Ferretería González) y cerrar con una
+#   pregunta fácil.
+#
+# Variables: {firma} {nombre} (mejor no usar {nombre}: los nombres de Google suelen ser largos)
+# {plural|singular}: la primera opción es para un negocio (ustedes) y la segunda para un
+# profesional que trabaja solo (Lic., Dra., psicóloga…), al que se le habla de vos.
+#
+# A/B: cada plantilla tiene versión "a" y "b". A cada lead le toca siempre la misma (por su número)
+# y queda guardada al registrar el envío: en "Respuestas → Por mensaje" se compara cuál anda mejor.
 
-planes:
-  cmr_nexo: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-    Tenemos CMR Nexo: los clientes sacan turno solos las 24 hs y les llega la confirmación por
-    WhatsApp. Ahora está con promo de lanzamiento. ¿Les muestro cómo funciona?
-  cmr_canchas: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-    Con CMR Canchas la gente reserva la cancha online a cualquier hora y ustedes ven la grilla
-    del día sin contestar mensajes. ¿Les interesa verlo?
-  pagina_web: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-    Armamos webs simples para que los encuentren en Google y les escriban directo por WhatsApp.
-    ¿Les muestro un ejemplo?
-  mejora_web: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Estuve viendo la web de
-    {nombre} y {problema_detectado}. Se la podemos renovar para que se vea bien en el celular.
-    ¿Les interesa que les muestre cómo quedaría?
-  tienda_online: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-    Les podemos armar una tienda online con catálogo y pedidos, así venden sin estar
-    respondiendo uno por uno. ¿Les interesa verlo?
-  sistema_turnos: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-    Les podemos sumar turnos online con seña y confirmación por WhatsApp, para que no tengan que
-    coordinar todo por mensaje. ¿Les muestro cómo funciona?
-  sistema_a_medida: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Hacemos sistemas a medida para
-    negocios de la zona (stock, pedidos, clientes). ¿Les sirve que charlemos cómo trabajan hoy?
-  generico: >-
-    Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Hacemos webs y sistemas para
-    negocios de la zona. ¿Les interesa que les cuente?
+firma: Tomi de CMR, de acá de San Nicolás
 
-rubros:
-  sistema_turnos:
-    deportes: >-
-      Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-      Les podemos sumar reserva de clases online con confirmación por WhatsApp, así los alumnos
-      se anotan solos. ¿Les muestro cómo funciona?
-  tienda_online:
-    gastronomia: >-
-      Hola, ¿cómo andan? Les escribo de {empresa}, acá de {ciudad}. Vi que {problema_detectado}.
-      Les podemos armar la carta online con pedidos directo a su WhatsApp, sin comisiones de
-      apps. ¿Les interesa verlo?
+plantillas:
+  estetica:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. A Canito Skin le armamos los turnos online y
+      ahora la gente reserva sola a cualquier hora. Los turnos {los toman|los tomás} por
+      WhatsApp? {Les|Te} muestro cómo funciona?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Los turnos {los toman|los tomás} por WhatsApp?
+      Con CMR Nexo la gente reserva sola las 24 hs y le llega la confirmación por WhatsApp,
+      como en Canito Skin. {Les|Te} muestro cómo funciona?
+
+  gimnasio:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Los lugares en las clases {los manejan|los
+      manejás} por WhatsApp? Con CMR Nexo los alumnos se anotan solos a cualquier hora y les llega
+      la confirmación por WhatsApp. {Les|Te} muestro cómo funciona?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Hicimos los turnos online de Canito Skin y con
+      CMR Nexo lo mismo sirve para clases: los alumnos se anotan solos y les llega la confirmación
+      por WhatsApp. {Les|Te} interesa verlo?
+
+  salud:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Los turnos {los dan|los das} por WhatsApp o por
+      teléfono? Con CMR Nexo los pacientes sacan turno solos las 24 hs y les llega la confirmación
+      por WhatsApp. {Les|Te} muestro cómo funciona?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Tenemos CMR Nexo, una agenda online: los
+      pacientes reservan solos y {ustedes ven|vos ves} todos los turnos ordenados. Algo así le
+      armamos a Canito Skin. {Les|Te} sirve que {les|te} cuente?
+
+  gastronomia:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Los pedidos {los toman|los tomás} por WhatsApp?
+      {Les|Te} podemos armar la carta online con los pedidos directo a {su|tu} WhatsApp, sin
+      comisiones de apps. {Les|Te} muestro un ejemplo?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. A Planeta Surf le armamos la tienda online con su
+      panel; para un local de comida es lo mismo con la carta y los pedidos a WhatsApp. {Les|Te}
+      interesa verlo?
+
+  canchas:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Las reservas de las canchas {las toman|las tomás}
+      por WhatsApp? Con CMR Canchas la gente reserva online a cualquier hora y ve los horarios
+      libres. {Les|Te} muestro cómo funciona?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Le hicimos el sistema de reservas de canchas al
+      Automóvil Club San Nicolás: la gente reserva online sin llamar ni mandar mensajes. {Les|Te}
+      muestro cómo funciona?
+
+  comercio_sin_web:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. No encontré {su|tu} página web.
+      {Tienen|Tenés}? Armamos webs para que {los|te} encuentren en Google y {les|te} escriban
+      directo por WhatsApp. {Les|Te} muestro un ejemplo?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. A Ferretería González le hicimos la web: ahí los
+      clientes ven lo que tienen y les escriben por WhatsApp. {Tienen|Tenés} página web? {Les|Te}
+      muestro cómo quedaría?
+
+  turnos:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Los turnos {los toman|los tomás} por WhatsApp?
+      Con CMR Nexo los clientes reservan solos las 24 hs y les llega la confirmación por WhatsApp.
+      {Les|Te} muestro cómo funciona?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. A Canito Skin le armamos los turnos online y
+      ahora sus clientes reservan solos a cualquier hora. {Les|Te} interesa algo así?
+
+  mejora_web:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. {La web la actualizan|Tu web la actualizás}
+      seguido? Renovamos webs para que se vean bien en el celular y {les|te} escriban directo por
+      WhatsApp. {Les|Te} muestro un ejemplo?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. A Ferretería González le hicimos la web y se ve
+      bien en el celular. {Les|Te} interesa ver cómo quedaría la
+      {suya|tuya}?
+
+  generico:
+    a: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Hacemos webs y sistemas para negocios de la zona,
+      como Ferretería González y Canito Skin. {Les|Te} cuento qué podríamos hacer para {ustedes|vos}?
+    b: >-
+      Hola, {cómo andan|cómo andás}? Soy {firma}. Armamos webs, turnos online y sistemas a medida
+      para negocios de la zona. Cómo {manejan|manejás} hoy las consultas de clientes?
 
 # Seguimientos (día 3 y día 7) para quien no contestó. Mismas variables.
 seguimientos:
   1: >-
-    Hola, ¿cómo andan? Les escribí hace unos días por {nombre}. Si les sirve, les mando un
-    ejemplo de cómo quedaría para que lo vean sin compromiso.
+    Hola, {cómo andan|cómo andás}? Soy Tomi de CMR, {les|te} escribí hace unos días. Si {les|te}
+    sirve, {les|te} muestro cómo funcionaría en {su|tu} negocio, sin compromiso. {Les|Te} va?
   2: >-
-    Hola de nuevo. No quiero insistir: si ahora no es el momento, avísenme y no les escribo más.
-    Si les interesa, lo charlamos cuando puedan.
-
-# Frases para {problema_detectado} según lo que se sabe del negocio.
-problemas:
-  sin_web: todavía no tienen página web
-  solo_instagram: se manejan solo con Instagram
-  link_en_bio: todo pasa por el link de la bio
-  web_vieja: la web no se adapta bien al celular
-  web_caida: la web que figura en Google no está funcionando
-  turnos_por_mensaje: los turnos los toman por mensaje
-  pedidos_por_mensaje: los pedidos los toman por mensaje
-  generico: tienen un negocio con buen movimiento en la zona
+    Hola de nuevo, soy Tomi de CMR. No quiero insistir: si no es el momento, {avísenme|avisame} y
+    no {les|te} escribo más. Si {les|te} interesa, lo charlamos cuando {puedan|puedas}.
